@@ -1,0 +1,139 @@
+package store
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/jamiesun/scootship/internal/protocol"
+)
+
+func sampleStatus() protocol.StatusBody {
+	return protocol.StatusBody{
+		ScootVersion:  "0.9.0",
+		EdgeVersion:   "0.1.0",
+		Daemon:        protocol.DaemonStatus{State: "running", CleanPrevStop: true, Since: 1000},
+		PolicyCeiling: "readonly",
+		AuditStats:    protocol.AuditStats{Run: 12, ToolCall: 40, PolicyDeny: 1},
+	}
+}
+
+func TestUpsertStatusRegistersNode(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if err := m.UpsertStatus("n-1", 2000, 1900, sampleStatus()); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := m.Node("n-1")
+	if !ok {
+		t.Fatal("node not registered")
+	}
+	if got.ScootVersion != "0.9.0" || got.PolicyCeiling != "readonly" {
+		t.Fatalf("unexpected view: %+v", got)
+	}
+	if got.AuditStats.ToolCall != 40 {
+		t.Fatalf("audit stats not stored: %+v", got.AuditStats)
+	}
+	if len(m.Nodes()) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(m.Nodes()))
+	}
+}
+
+func TestIngestAuditIsIdempotent(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteFrom: 0, ByteTo: 100, SeqTo: 2},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 1, Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 2, Kind: "final", Msg: "done"},
+		},
+	}
+
+	cur, n, err := m.IngestAudit("n-1", 3000, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("first ingest stored %d events, want 2", n)
+	}
+	if cur.ByteTo != 100 {
+		t.Fatalf("cursor not advanced: %+v", cur)
+	}
+
+	// Replaying the exact same range must be a no-op.
+	cur2, n2, err := m.IngestAudit("n-1", 3001, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n2 != 0 {
+		t.Fatalf("duplicate ingest stored %d events, want 0", n2)
+	}
+	if cur2 != cur {
+		t.Fatalf("duplicate ingest moved cursor: %+v -> %+v", cur, cur2)
+	}
+	if got := m.AuditEvents("n-1", 0); len(got) != 2 {
+		t.Fatalf("expected 2 stored events, got %d", len(got))
+	}
+
+	// A newer range advances.
+	next := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteFrom: 100, ByteTo: 220, SeqTo: 3},
+		Events: []protocol.AuditEvent{{Seq: 2, TS: 3, Kind: "tool_call", Msg: "grep"}},
+	}
+	_, n3, err := m.IngestAudit("n-1", 3002, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n3 != 1 {
+		t.Fatalf("advancing ingest stored %d events, want 1", n3)
+	}
+}
+
+func TestReplayRebuildsState(t *testing.T) {
+	dir := t.TempDir()
+
+	m, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertStatus("n-1", 2000, 1900, sampleStatus()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.IngestAudit("n-1", 3000, protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 100, SeqTo: 1},
+		Events: []protocol.AuditEvent{{Seq: 0, TS: 1, Kind: "run", Msg: "x"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopen and confirm the append-only log rebuilt the fleet view.
+	m2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m2.Close()
+	got, ok := m2.Node("n-1")
+	if !ok {
+		t.Fatal("node lost after replay")
+	}
+	if got.ScootVersion != "0.9.0" {
+		t.Fatalf("status lost after replay: %+v", got)
+	}
+	if got.Cursor.ByteTo != 100 || got.AuditStored != 1 {
+		t.Fatalf("audit state lost after replay: %+v", got)
+	}
+	if _, err := filepath.Abs(dir); err != nil {
+		t.Fatal(err)
+	}
+}
