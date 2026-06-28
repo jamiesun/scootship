@@ -1,0 +1,21 @@
+# Binaries / build output
+/bin/
+/dist/
+# Anchored to repo root so it ignores a stray `go build` binary here, NOT the
+# cmd/scootship/ source directory.
+/scootship
+
+# Local append-only data store (default SCOOTSHIP_DATA_DIR)
+/data/
+
+# Secrets — never commit node tokens or TLS keys
+*.pem
+*.key
+node-tokens.json
+
+# Test / coverage artifacts
+*.out
+coverage.*
+
+# OS / editor cruft
+.DS_Store
