@@ -1,6 +1,6 @@
 # scootship
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](docs/README.zh-CN.md)
 
 **A management center for a fleet of [Scoot](https://github.com/jamiesun/scoot) agents.**
 

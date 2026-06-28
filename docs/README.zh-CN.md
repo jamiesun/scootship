@@ -1,6 +1,6 @@
 # scootship
 
-[English](README.md) | **简体中文**
+[English](../README.md) | **简体中文**
 
 **一个面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的管理中心。**
 
@@ -13,7 +13,7 @@ dashboard，让你在一个地方观测整支车队。
 > **状态：阶段一 —— 观测 + 框架（pre-1.0）。**
 > 中心摄入 `status` 心跳与 `audit_batch` 日志上报，并渲染车队。
 > 任务**派发 / 编排（EDGE.md E2）**有意尚未构建 —— lease 端点存在但不派发任何东西。项目形态、
-> 边界与方向见 [`docs/roadmap.zh-CN.md`](docs/roadmap.zh-CN.md)。
+边界与方向见 [`roadmap.zh-CN.md`](roadmap.zh-CN.md)。
 
 ## 为什么是一个独立的伴生程序
 
@@ -101,7 +101,7 @@ make ci         # fmt-check + vet + test + build
 ## 协议对齐
 
 scootship 实现冻结的 `scoot-edge` v1 契约的**中心侧**。线缆形状位于
-[`internal/protocol`](internal/protocol/protocol.go)，精确镜像 EDGE.md：
+[`internal/protocol`](../internal/protocol/protocol.go)，精确镜像 EDGE.md：
 
 - 信封 `{"v":1,"type":"status|audit_batch|job|job_event","node_id":"...","sent_ts":...,"body":{}}`。
 - **E1（已实现）：** `POST /telemetry` 接受 `status` 与 `audit_batch`（并向前兼容 `job_event`）。
@@ -128,8 +128,8 @@ scootship 只说这份契约；它不依赖任何 Scoot 内部实现。
 ## 贡献
 
 修改前请阅读 [`AGENT.zh-CN.md`](AGENT.zh-CN.md)（工程手册）与
-[`docs/roadmap.zh-CN.md`](docs/roadmap.zh-CN.md)（意图与硬边界）。推送前运行 `make ci`。
+[`roadmap.zh-CN.md`](roadmap.zh-CN.md)（意图与硬边界）。推送前运行 `make ci`。
 
 ## 许可
 
-[MIT](LICENSE) —— 与 Scoot 生态保持一致。
+[MIT](../LICENSE) —— 与 Scoot 生态保持一致。
