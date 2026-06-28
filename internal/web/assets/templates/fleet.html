@@ -1,0 +1,61 @@
+{{define "fleet"}}{{template "header" .}}
+    <section class="summary">
+      <div class="stat">
+        <span class="num">{{.Total}}</span>
+        <span class="lbl">nodes</span>
+      </div>
+      <div class="stat">
+        <span class="num ok">{{.Online}}</span>
+        <span class="lbl">online</span>
+      </div>
+      <div class="stat">
+        <span class="num {{if .Stale}}warn{{end}}">{{.Stale}}</span>
+        <span class="lbl">stale</span>
+      </div>
+    </section>
+
+    {{if .Nodes}}
+    <table class="fleet">
+      <thead>
+        <tr>
+          <th>node</th>
+          <th>state</th>
+          <th>scoot</th>
+          <th>edge</th>
+          <th>ceiling</th>
+          <th>daemon</th>
+          <th class="num-col">runs</th>
+          <th class="num-col">denies</th>
+          <th class="num-col">audit</th>
+          <th>last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Nodes}}
+        <tr>
+          <td><a href="/nodes/{{.NodeID}}" class="node-link">{{.NodeID}}</a>
+            {{range .Labels}}<span class="tag">{{.}}</span>{{end}}
+          </td>
+          <td>{{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}</td>
+          <td>{{or .ScootVersion "—"}}</td>
+          <td>{{or .EdgeVersion "—"}}</td>
+          <td><span class="ceiling ceiling-{{.PolicyCeiling}}">{{or .PolicyCeiling "—"}}</span></td>
+          <td>{{or .DaemonState "—"}}</td>
+          <td class="num-col">{{.AuditRun}}</td>
+          <td class="num-col {{if .AuditPolicyDeny}}warn{{end}}">{{.AuditPolicyDeny}}</td>
+          <td class="num-col">{{.AuditStored}}</td>
+          <td class="muted">{{.LastSeenAgo}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <section class="empty">
+      <h2>No nodes have reported yet.</h2>
+      <p>The center is waiting for a <code>scoot-edge</code> to dial out and POST telemetry.
+         Until the real edge binary exists (it is E0 design-only today), drive the full
+         heartbeat → ingest → dashboard path with the built-in simulator:</p>
+      <pre>scootship mock-edge -center http://localhost{{.Addr}} -node n-dev -token dev-token</pre>
+    </section>
+    {{end}}
+{{template "footer" .}}{{end}}

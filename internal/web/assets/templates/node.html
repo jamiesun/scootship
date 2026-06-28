@@ -1,0 +1,68 @@
+{{define "node"}}{{template "header" .}}
+    <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>{{.Node.NodeID}}</span></nav>
+
+    <section class="node-head">
+      <h1>{{.Node.NodeID}}
+        {{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}
+      </h1>
+      <div class="kv-grid">
+        <div><span class="k">scoot</span><span class="v">{{or .Node.ScootVersion "—"}}</span></div>
+        <div><span class="k">edge</span><span class="v">{{or .Node.EdgeVersion "—"}}</span></div>
+        <div><span class="k">policy ceiling</span><span class="v"><span class="ceiling ceiling-{{.Node.PolicyCeiling}}">{{or .Node.PolicyCeiling "—"}}</span></span></div>
+        <div><span class="k">daemon</span><span class="v">{{or .Node.Daemon.State "—"}}{{if .Node.Daemon.CleanPrevStop}} <span class="muted">(clean prev stop)</span>{{end}}</span></div>
+        <div><span class="k">last seen</span><span class="v">{{.LastSeenAgo}}</span></div>
+        <div><span class="k">audit cursor</span><span class="v muted">gen {{.Node.Cursor.FileGen}} · byte {{.Node.Cursor.ByteTo}} · seq {{.Node.Cursor.SeqTo}}</span></div>
+      </div>
+    </section>
+
+    <section class="cols">
+      <div class="card">
+        <h3>audit stats <span class="muted">(derived counts from the node)</span></h3>
+        <table class="kv">
+          <tr><td>run</td><td class="num-col">{{.Node.AuditStats.Run}}</td></tr>
+          <tr><td>tool_call</td><td class="num-col">{{.Node.AuditStats.ToolCall}}</td></tr>
+          <tr><td>observation</td><td class="num-col">{{.Node.AuditStats.Observation}}</td></tr>
+          <tr><td>final</td><td class="num-col">{{.Node.AuditStats.Final}}</td></tr>
+          <tr><td>policy_deny</td><td class="num-col {{if .Node.AuditStats.PolicyDeny}}warn{{end}}">{{.Node.AuditStats.PolicyDeny}}</td></tr>
+          <tr><td>system_error</td><td class="num-col {{if .Node.AuditStats.SystemError}}warn{{end}}">{{.Node.AuditStats.SystemError}}</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>capability descriptor <span class="muted">(advisory, never authority)</span></h3>
+        {{with .Node.Descriptor}}
+          {{if .Labels}}<p class="tags">{{range .Labels}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
+          <p class="muted">{{or .OS "?"}}/{{or .Arch "?"}}</p>
+          {{with .Capabilities}}
+            <p><span class="k">max_job_policy</span> <span class="ceiling ceiling-{{.MaxJobPolicy}}">{{or .MaxJobPolicy "—"}}</span></p>
+            {{if .Tools}}<p class="muted">tools: {{range .Tools}}<code>{{.}}</code> {{end}}</p>{{end}}
+            {{if .Skills}}<p class="muted">skills: {{range .Skills}}<code>{{.}}</code> {{end}}</p>{{end}}
+          {{end}}
+        {{else}}
+          <p class="muted">No descriptor reported (capability reporting is off by default on the edge).</p>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>recent ingested audit <span class="muted">({{len .Audits}} shown · newest first)</span></h3>
+      {{if .Audits}}
+      <table class="audit">
+        <thead><tr><th>seq</th><th>kind</th><th>session</th><th>msg</th></tr></thead>
+        <tbody>
+          {{range .Audits}}
+          <tr>
+            <td class="num-col muted">{{.Event.Seq}}</td>
+            <td><span class="kind kind-{{.Event.Kind}}">{{.Event.Kind}}</span></td>
+            <td class="muted mono">{{or .Event.SessionID "—"}}</td>
+            <td class="msg">{{trunc .Event.Msg 160}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No audit bodies ingested. Audit shipping is off by default on the edge;
+         only the <code>status</code> heartbeat (counts, never bodies) is sent until a node opts in.</p>
+      {{end}}
+    </section>
+{{template "footer" .}}{{end}}

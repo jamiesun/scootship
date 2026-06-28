@@ -1,0 +1,69 @@
+{{define "header"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · scootship</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="side-top">
+      <a class="brand" href="/">
+        <span class="brand-mark">⌁</span>
+        <span class="nav-label brand-name">scootship</span>
+      </a>
+    </div>
+    <nav class="side-nav">
+      <a class="nav-item {{if eq .Active "fleet"}}active{{end}}" href="/" title="Fleet">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="nav-label">Fleet</span>
+      </a>
+      <span class="nav-item disabled" title="Dispatch / orchestration is EDGE.md E2 — not built in phase 1">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        <span class="nav-label">Dispatch</span>
+        <span class="soon">E2</span>
+      </span>
+      <a class="nav-item" href="/healthz" title="Health" target="_blank" rel="noopener">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span class="nav-label">Health</span>
+      </a>
+    </nav>
+    <div class="side-bottom">
+      <div class="who" title="{{or .User "signed in"}}">
+        <span class="avatar">{{initial .User}}</span>
+        <span class="nav-label who-name">{{or .User "—"}}</span>
+      </div>
+      <form method="post" action="/logout">
+        <button class="logout" type="submit" title="Sign out">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span class="nav-label">Sign out</span>
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="content" id="content">
+    <header class="topbar">
+      <button class="toggle" id="sidebarToggle" aria-label="Toggle menu">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="tagline">scoot fleet center · phase&nbsp;1 · observation</span>
+      <span class="spacer"></span>
+      <label class="auto"><input type="checkbox" id="autorefresh" checked> auto-refresh</label>
+    </header>
+    <main>
+{{end}}
+
+{{define "footer"}}    </main>
+    <footer class="footer">
+      <span>scootship {{.Version}}</span>
+      <span class="dot">·</span>
+      <span>append-only ingest · the center never raises a node's policy ceiling</span>
+    </footer>
+  </div>
+  <div class="scrim" id="scrim"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,341 @@
+package center_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/jamiesun/scootship/internal/center"
+	"github.com/jamiesun/scootship/internal/config"
+	"github.com/jamiesun/scootship/internal/protocol"
+	"github.com/jamiesun/scootship/internal/store"
+	"github.com/jamiesun/scootship/internal/tokens"
+)
+
+func defaultCfg() config.Config {
+	return config.Config{
+		Addr:             ":0",
+		AdminUser:        "admin",
+		AdminPassword:    "testpass", // a real login is required for the dashboard
+		StaleSeconds:     90,
+		MaxTelemetryByte: 8 << 20,
+	}
+}
+
+func newServer(t *testing.T, cfg config.Config) (*httptest.Server, store.Store) {
+	t.Helper()
+	st, err := store.Open("") // in-memory
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := tokens.New(map[string]string{"n-1": "secret"})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, err := center.New(cfg, st, reg, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() { ts.Close(); st.Close() })
+	return ts, st
+}
+
+func newTestServer(t *testing.T) (*httptest.Server, store.Store) {
+	t.Helper()
+	return newServer(t, defaultCfg())
+}
+
+// loginClient returns an http.Client with a valid dashboard session.
+func loginClient(t *testing.T, base string) *http.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar}
+	resp, err := c.PostForm(base+"/login", url.Values{
+		"user": {"admin"}, "password": {"testpass"}, "next": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// The 303 is followed to "/", which only renders (200) once authenticated.
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/" {
+		t.Fatalf("login failed: status=%d path=%s", resp.StatusCode, resp.Request.URL.Path)
+	}
+	return c
+}
+
+func envBytes(t *testing.T, typ, node string, body any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := protocol.Envelope{V: 1, Type: typ, NodeID: node, SentTS: 1, Body: raw}
+	out, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func postTelemetry(t *testing.T, base, token string, payload []byte) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, base+"/telemetry", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	return resp, body
+}
+
+func TestTelemetryFlow(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	status := protocol.StatusBody{
+		ScootVersion:  "0.9.0",
+		PolicyCeiling: "readonly",
+		Daemon:        protocol.DaemonStatus{State: "running"},
+		AuditStats:    protocol.AuditStats{Run: 5, ToolCall: 9},
+	}
+
+	// 1) A valid heartbeat registers the node.
+	resp, body := postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeStatus, "n-1", status))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("heartbeat status=%d body=%s", resp.StatusCode, body)
+	}
+
+	// 2) The dashboard JSON API (after login) now shows the node.
+	client := loginClient(t, ts.URL)
+	fleet := getJSON(t, client, ts.URL+"/api/fleet")
+	nodes, _ := fleet["nodes"].([]any)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node in fleet, got %v", fleet["nodes"])
+	}
+
+	// 3) An audit batch is ingested, and a replay is idempotent.
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 200, SeqTo: 1},
+		Events: []protocol.AuditEvent{{Seq: 0, TS: 1, Kind: "run", Msg: "hello"}},
+	}
+	resp, body = postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeAuditBatch, "n-1", batch))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("audit status=%d body=%s", resp.StatusCode, body)
+	}
+	var ack struct {
+		AuditStored int             `json:"audit_stored"`
+		Cursor      protocol.Cursor `json:"cursor"`
+	}
+	if err := json.Unmarshal(body, &ack); err != nil {
+		t.Fatalf("decode ack: %v (%s)", err, body)
+	}
+	if ack.AuditStored != 1 || ack.Cursor.ByteTo != 200 {
+		t.Fatalf("unexpected ack: %+v", ack)
+	}
+
+	// Replaying the same batch stores nothing and returns the same cursor.
+	_, body = postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeAuditBatch, "n-1", batch))
+	_ = json.Unmarshal(body, &ack)
+	if ack.AuditStored != 0 {
+		t.Fatalf("duplicate audit stored %d, want 0", ack.AuditStored)
+	}
+}
+
+func TestTelemetryAuth(t *testing.T) {
+	ts, _ := newTestServer(t)
+	status := protocol.StatusBody{ScootVersion: "0.9.0"}
+
+	resp, _ := postTelemetry(t, ts.URL, "", envBytes(t, protocol.TypeStatus, "n-1", status))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("missing token: got %d want 401", resp.StatusCode)
+	}
+
+	resp, _ = postTelemetry(t, ts.URL, "nope", envBytes(t, protocol.TypeStatus, "n-1", status))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bad token: got %d want 401", resp.StatusCode)
+	}
+
+	resp, _ = postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeStatus, "n-OTHER", status))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("node mismatch: got %d want 403", resp.StatusCode)
+	}
+}
+
+func TestDashboardRequiresLogin(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	// API without a session -> 401.
+	resp, err := http.Get(ts.URL + "/api/fleet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated api: got %d want 401", resp.StatusCode)
+	}
+
+	// HTML page without a session -> redirect to /login.
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err = noRedirect.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauthenticated page: got %d want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/login") {
+		t.Fatalf("expected redirect to /login, got %q", loc)
+	}
+}
+
+func TestLoginRejectsBadCredentials(t *testing.T) {
+	ts, _ := newTestServer(t)
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+
+	resp, err := c.PostForm(ts.URL+"/login", url.Values{"user": {"admin"}, "password": {"wrong"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// A failed login must not yield a usable session.
+	r2, err := c.Get(ts.URL + "/api/fleet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bad creds should not authenticate: got %d want 401", r2.StatusCode)
+	}
+}
+
+func TestLoginLockout(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.LoginMaxFails = 3
+	ts, _ := newServer(t, cfg)
+
+	// Every httptest request originates from 127.0.0.1, so they share one IP
+	// bucket. Don't follow redirects: failures render in place, a success 303s.
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	post := func(pass string) *http.Response {
+		t.Helper()
+		resp, err := c.PostForm(ts.URL+"/login", url.Values{"user": {"admin"}, "password": {pass}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+
+	// The first two failures are rejected with 401, not yet locked.
+	for i := 1; i <= 2; i++ {
+		if resp := post("wrong"); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: got %d want 401", i, resp.StatusCode)
+		}
+	}
+
+	// The third failure trips the lockout: 429 with a Retry-After hint.
+	resp := post("wrong")
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("third attempt: got %d want 429", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("locked-out response must carry Retry-After")
+	}
+
+	// While locked out, even the correct password is refused: the guard
+	// short-circuits before the credential check, so guessing cannot continue.
+	if resp := post("testpass"); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("correct password during lockout: got %d want 429", resp.StatusCode)
+	}
+}
+
+func TestLogout(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+
+	// Logged in: API works.
+	if _, ok := getJSON(t, client, ts.URL+"/api/fleet")["nodes"]; !ok {
+		t.Fatal("expected nodes key while logged in")
+	}
+
+	resp, err := client.PostForm(ts.URL+"/logout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// After logout the session is gone -> 401.
+	r2, err := client.Get(ts.URL + "/api/fleet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("after logout: got %d want 401", r2.StatusCode)
+	}
+}
+
+func TestLeaseIsObservationOnly(t *testing.T) {
+	ts, _ := newTestServer(t)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/jobs/lease?node=n-1&capacity=1", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("lease status=%d", resp.StatusCode)
+	}
+	if strings.TrimSpace(string(body)) != "" {
+		t.Fatalf("phase 1 lease must dispatch no jobs, got %q", body)
+	}
+	if got := resp.Header.Get("X-Scootship-Dispatch"); got != "disabled-phase1" {
+		t.Fatalf("expected dispatch disabled marker, got %q", got)
+	}
+}
+
+func TestHealth(t *testing.T) {
+	ts, _ := newTestServer(t)
+	m := getJSON(t, http.DefaultClient, ts.URL+"/healthz")
+	if m["ok"] != true || m["service"] != "scootship" {
+		t.Fatalf("unexpected health: %v", m)
+	}
+}
+
+func getJSON(t *testing.T, client *http.Client, url string) map[string]any {
+	t.Helper()
+	resp, err := client.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s = %d", url, resp.StatusCode)
+	}
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		t.Fatalf("decode %s: %v", url, err)
+	}
+	return m
+}

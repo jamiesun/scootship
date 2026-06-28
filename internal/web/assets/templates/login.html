@@ -1,0 +1,33 @@
+{{define "login"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · scootship</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-brand"><span class="brand-mark">⌁</span> scootship</div>
+    <p class="login-sub">scoot fleet center · sign in</p>
+
+    {{if .Error}}<div class="login-error">{{.Error}}</div>{{end}}
+    {{if not .Configured}}<div class="login-warn">Dashboard auth is not configured. Set <code>SCOOTSHIP_ADMIN_PASSWORD</code> on the server.</div>{{end}}
+
+    <form method="post" action="/login" autocomplete="on">
+      <input type="hidden" name="next" value="{{.Next}}">
+      <label>Username
+        <input name="user" autocomplete="username" autofocus required>
+      </label>
+      <label>Password
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Sign in</button>
+    </form>
+
+    {{if .DevHint}}<p class="login-dev">dev mode default: <code>admin</code> / <code>admin</code></p>{{end}}
+  </div>
+  <div class="login-foot">scootship {{.Version}}</div>
+</body>
+</html>
+{{end}}
