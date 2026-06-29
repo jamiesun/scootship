@@ -139,7 +139,8 @@ tested:
   major version is rejected.
 - **Telemetry ingest and idempotent storage.** `POST /telemetry` ingests `status` heartbeats and
   `audit_batch`; de-duplicates on the `{file_gen, byte_to}` idempotency cursor, stores append-only,
-  and replays on startup (`internal/center`, `internal/store`).
+  rejects invalid audit cursors / empty audit batches / unknown audit event kinds before mutation,
+  and replays on startup (`internal/protocol`, `internal/center`, `internal/store`).
 - **Audit retention window and gap visibility.** The center keeps a configurable recent audit window
   per node for API/dashboard reads (`SCOOTSHIP_AUDIT_RETENTION_EVENTS`) while preserving accepted
   events in the append-only JSONL log; retention overflow is surfaced as an explicit center-side
@@ -321,6 +322,13 @@ or "admin-only" bypasses until these conditions are met:
   named in the Scootship change.
 - A dispatch threat-model note covers queue abuse, replay/idempotency, capability spoofing,
   authorization, audit provenance, and rollback.
+
+Current gate status: **closed**. The E1 side now has evidence for production/dev transport
+fail-closed behavior, deployment/recovery docs, audit retention and gap visibility, token lifecycle
+governance, run audit timelines, read-only health signals, endpoint failure modes, and strict
+telemetry body validation. E2 remains blocked until the Scoot-side unattended readonly clamp and
+compatible edge contract are published, and until a dispatch threat model plus dispatch-specific code
+and tests exist in Scootship.
 
 - **Long-poll-based job dispatch.** Implement the center-side semantics of
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
