@@ -17,5 +17,8 @@ node-tokens.json
 *.out
 coverage.*
 
+# Local agent audit reports
+/reports/
+
 # OS / editor cruft
 .DS_Store

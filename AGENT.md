@@ -53,6 +53,10 @@ make mock-edge      # simulated node against the local center
 
 After changing any `.go` file, run at least `go build ./...` and `go test ./...`.
 
+GitHub Actions mirrors this with `.github/workflows/ci.yml`. Pushing a `vX.Y.Z` tag triggers
+`.github/workflows/release.yml`, which cross-compiles the single binary and publishes release
+archives with checksums.
+
 ## Code map
 
 | Path | Responsibility |
@@ -67,7 +71,9 @@ After changing any `.go` file, run at least `go build ./...` and `go test ./...`
 | `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, dashboard login session, dashboard + JSON API. |
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
-| `internal/version` | Build version string. |
+| `internal/version` | Build version string; release builds override `Version` with tag-derived linker flags. |
+| `.github/workflows` | CI and tag-driven release automation for cross-platform single-binary artifacts. |
+| `.agents/skills` | Project-local agent skills for release orchestration and whole-project audits. |
 
 When adding a subsystem, prefer a new `internal/<name>` package with a focused interface over
 widening an existing one. Keep `internal/protocol` dependency-free.

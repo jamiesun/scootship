@@ -47,6 +47,9 @@ make mock-edge      # 针对本地中心的模拟节点
 
 修改任何 `.go` 文件后，至少运行 `go build ./...` 与 `go test ./...`。
 
+GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX.Y.Z` 标签会触发
+`.github/workflows/release.yml`，它会交叉编译单二进制并发布带校验和的 release archives。
+
 ## 代码地图
 
 | 路径 | 职责 |
@@ -61,7 +64,9 @@ make mock-edge      # 针对本地中心的模拟节点
 | `internal/center` | HTTP 服务器、鉴权中间件、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、仪表盘登录会话、仪表盘 + JSON API。 |
 | `internal/web` | `embed.FS` 仪表盘模板与静态资源。 |
 | `internal/mockedge` | 模拟的边缘节点（心跳、审计上报、lease 轮询）。 |
-| `internal/version` | 构建版本字符串。 |
+| `internal/version` | 构建版本字符串；release 构建会用从标签派生的 linker flags 覆盖 `Version`。 |
+| `.github/workflows` | CI 与标签驱动的 release 自动化，用于跨平台单二进制 artifacts。 |
+| `.agents/skills` | 项目本地 agent skills，用于 release 编排与全项目审计。 |
 
 新增子系统时，优先用带聚焦接口的新 `internal/<name>` 包，而不是扩宽已有包。保持 `internal/protocol`
 无依赖。
