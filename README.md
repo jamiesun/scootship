@@ -1,5 +1,7 @@
 # scootship
 
+![scootship — fleet command center](docs/assets/hero.png)
+
 **English** | [简体中文](docs/README.zh-CN.md)
 
 **A management center for a fleet of [Scoot](https://github.com/jamiesun/scoot) agents.**

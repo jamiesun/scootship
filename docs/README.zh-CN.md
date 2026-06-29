@@ -1,5 +1,7 @@
 # scootship
 
+![scootship — 车队控制中心](assets/hero.png)
+
 [English](../README.md) | **简体中文**
 
 **一个面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的管理中心。**
