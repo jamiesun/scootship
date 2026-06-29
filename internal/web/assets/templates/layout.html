@@ -39,15 +39,16 @@
       </a>
     </nav>
     <div class="side-bottom">
-      <details class="settings-menu {{if or (eq .Active "settings") (eq .Active "operators")}}active{{end}}">
+      <details class="settings-menu {{if or (eq .Active "settings") (eq .Active "operators") (eq .Active "account")}}active{{end}}">
         <summary class="who who-toggle" title="Settings">
           <span class="avatar">{{initial .User}}</span>
           <span class="nav-label who-name">Settings</span>
           <svg class="ic caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
         <div class="settings-pop">
-          <a class="settings-item {{if eq .Active "operators"}}active{{end}}" href="/operators">Settings</a>
-          <a class="settings-item {{if eq .Active "settings"}}active{{end}}" href="/account">Account</a>
+          <a class="settings-item {{if eq .Active "settings"}}active{{end}}" href="/settings">Settings</a>
+          <a class="settings-item {{if eq .Active "operators"}}active{{end}}" href="/operators">Operators</a>
+          <a class="settings-item {{if eq .Active "account"}}active{{end}}" href="/account">Account</a>
         </div>
       </details>
     </div>

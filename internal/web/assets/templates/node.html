@@ -1,7 +1,7 @@
 {{define "node"}}{{template "header" .}}
     <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>{{.Node.NodeID}}</span></nav>
 
-    <section class="node-head">
+    <section class="page-head">
       <h1>{{.Node.NodeID}}
         {{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}
       </h1>
@@ -17,7 +17,7 @@
 
     <section class="cols">
       <div class="card">
-        <h3>audit stats <span class="muted">(derived counts from the node)</span></h3>
+        <h3>Audit Stats <span class="muted">(derived counts from the node)</span></h3>
         <table class="kv">
           <tr><td>run</td><td class="num-col">{{.Node.AuditStats.Run}}</td></tr>
           <tr><td>tool_call</td><td class="num-col">{{.Node.AuditStats.ToolCall}}</td></tr>
@@ -29,7 +29,7 @@
       </div>
 
       <div class="card">
-        <h3>capability descriptor <span class="muted">(advisory, never authority)</span></h3>
+        <h3>Capability Descriptor <span class="muted">(advisory, never authority)</span></h3>
         {{with .Node.Descriptor}}
           {{if .Labels}}<p class="tags">{{range .Labels}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
           <p class="muted">{{or .OS "?"}}/{{or .Arch "?"}}</p>
@@ -45,7 +45,7 @@
     </section>
 
     <section class="card">
-      <h3>recent ingested audit <span class="muted">({{len .Audits}} shown · newest first)</span></h3>
+      <h3>Recent Ingested Audit <span class="muted">({{len .Audits}} shown · newest first)</span></h3>
       {{if .Audits}}
       <table class="audit">
         <thead><tr><th>seq</th><th>kind</th><th>session</th><th>msg</th></tr></thead>
