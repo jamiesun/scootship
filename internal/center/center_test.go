@@ -419,6 +419,24 @@ func TestTelemetryFailureModesDoNotMutateStore(t *testing.T) {
 	if nodes := st2.Nodes(); len(nodes) != 0 {
 		t.Fatalf("invalid batch mutated store: %+v", nodes)
 	}
+	rawBadAuditBody, err := json.Marshal(protocol.Envelope{
+		V:      1,
+		Type:   protocol.TypeAuditBatch,
+		NodeID: "n-1",
+		SentTS: 1,
+		Body:   json.RawMessage(`"not-an-audit-body"`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts3, st3 := newTestServer(t)
+	mixed = append(append([]byte{}, validStatus...), '\n')
+	mixed = append(mixed, rawBadAuditBody...)
+	resp, body = postTelemetry(t, ts3.URL, "secret", mixed)
+	assertJSONError(t, resp, body, http.StatusBadRequest, "bad_audit_body")
+	if nodes := st3.Nodes(); len(nodes) != 0 {
+		t.Fatalf("invalid body batch mutated store: %+v", nodes)
+	}
 	if nodes := st.Nodes(); len(nodes) != 0 {
 		t.Fatalf("failure cases mutated store: %+v", nodes)
 	}
