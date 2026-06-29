@@ -76,6 +76,7 @@ archives with checksums.
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
 | `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, read-only health signals, dashboard login session, dashboard + JSON API. |
+| `internal/center/server_run_test.go` | Runtime transport smoke coverage for direct TLS, explicit dev HTTP, and trusted TLS-proxy HTTP modes. |
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
 | `internal/version` | Build version string; release builds override `Version` with tag-derived linker flags. |
