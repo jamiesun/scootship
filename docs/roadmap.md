@@ -144,6 +144,9 @@ tested:
   per node for API/dashboard reads (`SCOOTSHIP_AUDIT_RETENTION_EVENTS`) while preserving accepted
   events in the append-only JSONL log; retention overflow is surfaced as an explicit center-side
   `audit_gap` in node lifecycle state (`internal/store`, `internal/center`, `internal/web`).
+- **Run audit timeline over retained audit.** Node detail API/pages group retained audit events by
+  `session_id` / `run_id` and order each run by `seq` / `ts`, so recent agent activity can be read
+  without opening raw JSONL (`internal/store`, `internal/center`, `internal/web`).
 - **Node registry and token auth.** Per-node bearer-token auth; a token may only ever speak for its
   own `node_id`; the dashboard exposes read-only token inventory metadata (source, fingerprint,
   last authentication) without displaying bearer secrets (`internal/tokens`, `internal/center`).

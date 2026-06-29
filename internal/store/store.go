@@ -49,6 +49,24 @@ type StoredAudit struct {
 	Event  protocol.AuditEvent `json:"event"`
 }
 
+// AuditTimeline groups retained audit events by session_id/run_id so operators
+// can read a run in chronological order without spelunking raw JSONL.
+type AuditTimeline struct {
+	NodeID      string              `json:"node_id"`
+	TimelineID  string              `json:"timeline_id"`
+	SessionID   string              `json:"session_id,omitempty"`
+	RunID       string              `json:"run_id,omitempty"`
+	FirstTS     int64               `json:"first_ts,omitempty"`
+	LastTS      int64               `json:"last_ts,omitempty"`
+	FirstRecvMS int64               `json:"first_recv_ms"`
+	LastRecvMS  int64               `json:"last_recv_ms"`
+	FirstSeq    uint64              `json:"first_seq"`
+	LastSeq     uint64              `json:"last_seq"`
+	EventCount  int                 `json:"event_count"`
+	KindCounts  protocol.AuditStats `json:"kind_counts"`
+	Events      []StoredAudit       `json:"events"`
+}
+
 // StoredJobEvent is one ingested job lifecycle report (E2 telemetry).
 type StoredJobEvent struct {
 	NodeID string                `json:"node_id"`
@@ -79,6 +97,10 @@ type Store interface {
 	// AuditEvents returns up to limit of the most recent audit events for a node,
 	// newest first.
 	AuditEvents(nodeID string, limit int) []StoredAudit
+
+	// AuditTimelines returns retained audit events grouped by session_id/run_id,
+	// newest run first, with each run's events ordered chronologically.
+	AuditTimelines(nodeID string, limit int) []AuditTimeline
 
 	// Close flushes and releases any resources.
 	Close() error

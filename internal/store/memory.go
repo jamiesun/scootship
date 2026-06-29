@@ -336,6 +336,99 @@ func (m *Mem) AuditEvents(nodeID string, limit int) []StoredAudit {
 	return out
 }
 
+// AuditTimelines implements Store.
+func (m *Mem) AuditTimelines(nodeID string, limit int) []AuditTimeline {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ns := m.nodes[nodeID]
+	if ns == nil || len(ns.audits) == 0 {
+		return nil
+	}
+
+	order := make([]string, 0)
+	byKey := map[string]*AuditTimeline{}
+	for _, audit := range ns.audits {
+		key, id := timelineKey(audit.Event)
+		tl := byKey[key]
+		if tl == nil {
+			tl = &AuditTimeline{
+				NodeID:      nodeID,
+				TimelineID:  id,
+				SessionID:   audit.Event.SessionID,
+				RunID:       audit.Event.RunID,
+				FirstTS:     audit.Event.TS,
+				LastTS:      audit.Event.TS,
+				FirstRecvMS: audit.RecvMS,
+				LastRecvMS:  audit.RecvMS,
+				FirstSeq:    audit.Event.Seq,
+				LastSeq:     audit.Event.Seq,
+			}
+			byKey[key] = tl
+			order = append(order, key)
+		}
+		tl.Events = append(tl.Events, audit)
+		tl.EventCount++
+		tl.LastTS = audit.Event.TS
+		tl.LastRecvMS = audit.RecvMS
+		tl.LastSeq = audit.Event.Seq
+		incrementAuditStats(&tl.KindCounts, audit.Event.Kind)
+	}
+
+	out := make([]AuditTimeline, 0, len(order))
+	for _, key := range order {
+		tl := byKey[key]
+		events := make([]StoredAudit, len(tl.Events))
+		copy(events, tl.Events)
+		tl.Events = events
+		out = append(out, *tl)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].LastTS != out[j].LastTS {
+			return out[i].LastTS > out[j].LastTS
+		}
+		if out[i].LastRecvMS != out[j].LastRecvMS {
+			return out[i].LastRecvMS > out[j].LastRecvMS
+		}
+		return out[i].LastSeq > out[j].LastSeq
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func timelineKey(ev protocol.AuditEvent) (key, id string) {
+	switch {
+	case ev.SessionID != "" && ev.RunID != "":
+		return "session:" + ev.SessionID + "\x00run:" + ev.RunID, ev.SessionID + " / " + ev.RunID
+	case ev.SessionID != "":
+		return "session:" + ev.SessionID, ev.SessionID
+	case ev.RunID != "":
+		return "run:" + ev.RunID, ev.RunID
+	default:
+		return "unscoped", "unscoped"
+	}
+}
+
+func incrementAuditStats(stats *protocol.AuditStats, kind string) {
+	switch kind {
+	case "run":
+		stats.Run++
+	case "thought":
+		stats.Thought++
+	case "tool_call":
+		stats.ToolCall++
+	case "observation":
+		stats.Observation++
+	case "final":
+		stats.Final++
+	case "policy_deny":
+		stats.PolicyDeny++
+	case "system_error":
+		stats.SystemError++
+	}
+}
+
 // Close implements Store.
 func (m *Mem) Close() error {
 	m.mu.Lock()
