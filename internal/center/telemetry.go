@@ -20,6 +20,13 @@ type telemetryAck struct {
 	Cursor      *protocol.Cursor `json:"cursor,omitempty"`
 }
 
+type telemetryMessage struct {
+	env      protocol.Envelope
+	status   protocol.StatusBody
+	audit    protocol.AuditBatchBody
+	jobEvent protocol.JobEventBody
+}
+
 // handleTelemetry ingests one or more NDJSON envelopes (status, audit_batch, or
 // job_event) from an authenticated node. Envelopes are validated as a group
 // before anything is applied, so a malformed batch is rejected atomically; once
@@ -31,7 +38,7 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the whole batch first. json.Decoder reads a stream of JSON values,
 	// which covers both a single envelope and newline-delimited envelopes.
-	var envs []protocol.Envelope
+	var msgs []telemetryMessage
 	dec := json.NewDecoder(r.Body)
 	for {
 		var env protocol.Envelope
@@ -61,35 +68,43 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "wrong_direction", "job envelopes are dispatched via /jobs/lease, not posted to /telemetry")
 			return
 		}
-		envs = append(envs, env)
+		msg := telemetryMessage{env: env}
+		switch env.Type {
+		case protocol.TypeStatus:
+			if err := json.Unmarshal(env.Body, &msg.status); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "bad_status_body", err.Error())
+				return
+			}
+		case protocol.TypeAuditBatch:
+			if err := json.Unmarshal(env.Body, &msg.audit); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "bad_audit_body", err.Error())
+				return
+			}
+		case protocol.TypeJobEvent:
+			if err := json.Unmarshal(env.Body, &msg.jobEvent); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "bad_job_event_body", err.Error())
+				return
+			}
+		}
+		msgs = append(msgs, msg)
 	}
 
-	if len(envs) == 0 {
+	if len(msgs) == 0 {
 		writeJSONError(w, http.StatusBadRequest, "empty", "no envelopes in request")
 		return
 	}
 
-	ack := telemetryAck{OK: true, NodeID: node, Received: len(envs)}
-	for _, env := range envs {
-		switch env.Type {
+	ack := telemetryAck{OK: true, NodeID: node, Received: len(msgs)}
+	for _, msg := range msgs {
+		switch msg.env.Type {
 		case protocol.TypeStatus:
-			var body protocol.StatusBody
-			if err := json.Unmarshal(env.Body, &body); err != nil {
-				writeJSONError(w, http.StatusBadRequest, "bad_status_body", err.Error())
-				return
-			}
-			if err := s.store.UpsertStatus(node, recvMS, env.SentTS, body); err != nil {
+			if err := s.store.UpsertStatus(node, recvMS, msg.env.SentTS, msg.status); err != nil {
 				s.log.Error("store status", "node", node, "err", err)
 				writeJSONError(w, http.StatusInternalServerError, "store_error", "failed to record status")
 				return
 			}
 		case protocol.TypeAuditBatch:
-			var body protocol.AuditBatchBody
-			if err := json.Unmarshal(env.Body, &body); err != nil {
-				writeJSONError(w, http.StatusBadRequest, "bad_audit_body", err.Error())
-				return
-			}
-			cursor, stored, err := s.store.IngestAudit(node, recvMS, body)
+			cursor, stored, err := s.store.IngestAudit(node, recvMS, msg.audit)
 			if err != nil {
 				s.log.Error("ingest audit", "node", node, "err", err)
 				writeJSONError(w, http.StatusInternalServerError, "store_error", "failed to ingest audit")
@@ -99,12 +114,7 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 			ack.Cursor = &c
 			ack.AuditStored += stored
 		case protocol.TypeJobEvent:
-			var body protocol.JobEventBody
-			if err := json.Unmarshal(env.Body, &body); err != nil {
-				writeJSONError(w, http.StatusBadRequest, "bad_job_event_body", err.Error())
-				return
-			}
-			if err := s.store.RecordJobEvent(node, recvMS, body); err != nil {
+			if err := s.store.RecordJobEvent(node, recvMS, msg.jobEvent); err != nil {
 				s.log.Error("record job event", "node", node, "err", err)
 				writeJSONError(w, http.StatusInternalServerError, "store_error", "failed to record job event")
 				return
