@@ -35,7 +35,9 @@ fleet**, so scootship is built defensively:
 
 One honest caveat from EDGE.md carries over: once a node opts in to audit shipping, the
 bodies it ships (file contents, command output) live at the center. Treat the center, and its
-dashboard login, as sensitive.
+dashboard login, as sensitive. The dashboard/API keep a bounded recent audit window per node and
+mark an explicit `audit_gap` when that window trims; accepted audit batches are still persisted
+append-only to the center JSONL log.
 
 ```text
         Operators (browser · login session)
@@ -110,6 +112,8 @@ make ci         # fmt-check + vet + test + build
 | `SCOOTSHIP_NODE_TOKENS` | _(unset)_ | Inline `n-7a3=secret,n-8b4=secret2`. |
 | `SCOOTSHIP_DEV` | _(unset)_ | `=1` seeds the demo node token and a default `admin`/`admin` dashboard login (insecure; local use). |
 | `SCOOTSHIP_STALE_SECONDS` | `90` | A node is shown "stale" after this much silence. |
+| `SCOOTSHIP_MAX_TELEMETRY_BYTES` | `8388608` | Maximum size of one `/telemetry` request body. |
+| `SCOOTSHIP_AUDIT_RETENTION_EVENTS` | `1000` | Recent audit events retained per node for dashboard/API reads. Overflow creates an explicit `audit_gap`; accepted events remain in the append-only JSONL log. |
 | `SCOOTSHIP_LOGIN_MAX_FAILS` | `5` | Failed dashboard logins from one source IP before it is locked out. |
 | `SCOOTSHIP_LOGIN_WINDOW_SECONDS` | `900` | Sliding window over which failures are counted. |
 | `SCOOTSHIP_LOGIN_LOCKOUT_SECONDS` | `900` | How long a tripped IP stays locked out. |
@@ -126,7 +130,8 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - Envelope `{"v":1,"type":"status|audit_batch|job|job_event","node_id":"...","sent_ts":...,"body":{}}`.
 - **E1 (implemented):** `POST /telemetry` accepts `status` and `audit_batch` (and forward-compatibly
   `job_event`). Audit ingest is idempotent on the `{file_gen, byte_to}` cursor and acks the durably
-  stored cursor so the edge only advances after a durable ack.
+  stored cursor so the edge only advances after a durable ack. The recent audit window is bounded by
+  `SCOOTSHIP_AUDIT_RETENTION_EVENTS`; trimming is visible as a center-side `audit_gap`.
 - **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
   in Phase 1.
 
@@ -138,7 +143,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | --- | --- |
 | `cmd/scootship` | CLI entrypoint: `serve`, `mock-edge`, `version`. |
 | `internal/protocol` | The frozen scoot-edge v1 wire contract (envelope, bodies, cursor). |
-| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest + replay. |
+| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, and visible audit-retention gaps. |
 | `internal/tokens` | Per-node bearer-token registry plus dashboard-safe token inventory metadata (the center's node auth surface). |
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |

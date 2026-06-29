@@ -14,18 +14,19 @@ import (
 
 // Config is the resolved center configuration.
 type Config struct {
-	Addr             string // listen address, e.g. ":8080"
-	TLSCert          string // PEM cert path; with TLSKey enables HTTPS
-	TLSKey           string // PEM key path
-	BehindTLSProxy   bool   // explicitly allow plain HTTP listener behind trusted TLS termination
-	DataDir          string // append-only store directory
-	AdminUser        string // first dashboard operator username when the operator store is empty
-	AdminPassword    string // first dashboard operator password when the operator store is empty
-	NodeTokensFile   string // JSON node_id->token file
-	NodeTokensInline string // "node=token,node2=token2"
-	Dev              bool   // dev conveniences (seed a demo node token + default login)
-	StaleSeconds     int    // a node is "stale" after this many seconds of silence
-	MaxTelemetryByte int64  // cap on a single /telemetry request body
+	Addr                 string // listen address, e.g. ":8080"
+	TLSCert              string // PEM cert path; with TLSKey enables HTTPS
+	TLSKey               string // PEM key path
+	BehindTLSProxy       bool   // explicitly allow plain HTTP listener behind trusted TLS termination
+	DataDir              string // append-only store directory
+	AdminUser            string // first dashboard operator username when the operator store is empty
+	AdminPassword        string // first dashboard operator password when the operator store is empty
+	NodeTokensFile       string // JSON node_id->token file
+	NodeTokensInline     string // "node=token,node2=token2"
+	Dev                  bool   // dev conveniences (seed a demo node token + default login)
+	StaleSeconds         int    // a node is "stale" after this many seconds of silence
+	MaxTelemetryByte     int64  // cap on a single /telemetry request body
+	AuditRetentionEvents int    // recent audit events retained per node for API/dashboard reads
 
 	// Login brute-force protection (per source IP).
 	LoginMaxFails int
@@ -41,22 +42,23 @@ type Config struct {
 // FromEnv resolves configuration from SCOOTSHIP_* environment variables.
 func FromEnv(getenv func(string) string) Config {
 	return Config{
-		Addr:             def(getenv("SCOOTSHIP_ADDR"), ":8080"),
-		TLSCert:          getenv("SCOOTSHIP_TLS_CERT"),
-		TLSKey:           getenv("SCOOTSHIP_TLS_KEY"),
-		BehindTLSProxy:   truthy(getenv("SCOOTSHIP_BEHIND_TLS_PROXY")),
-		DataDir:          def(getenv("SCOOTSHIP_DATA_DIR"), "./data"),
-		AdminUser:        def(getenv("SCOOTSHIP_ADMIN_USER"), "admin"),
-		AdminPassword:    getenv("SCOOTSHIP_ADMIN_PASSWORD"),
-		NodeTokensFile:   getenv("SCOOTSHIP_NODE_TOKENS_FILE"),
-		NodeTokensInline: getenv("SCOOTSHIP_NODE_TOKENS"),
-		Dev:              truthy(getenv("SCOOTSHIP_DEV")),
-		StaleSeconds:     intDef(getenv("SCOOTSHIP_STALE_SECONDS"), 90),
-		MaxTelemetryByte: int64(intDef(getenv("SCOOTSHIP_MAX_TELEMETRY_BYTES"), 8*1024*1024)),
-		LoginMaxFails:    intDef(getenv("SCOOTSHIP_LOGIN_MAX_FAILS"), 5),
-		LoginWindow:      time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_WINDOW_SECONDS"), 900)) * time.Second,
-		LoginLockout:     time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_LOCKOUT_SECONDS"), 900)) * time.Second,
-		TrustedProxies:   parseProxies(getenv("SCOOTSHIP_TRUSTED_PROXIES")),
+		Addr:                 def(getenv("SCOOTSHIP_ADDR"), ":8080"),
+		TLSCert:              getenv("SCOOTSHIP_TLS_CERT"),
+		TLSKey:               getenv("SCOOTSHIP_TLS_KEY"),
+		BehindTLSProxy:       truthy(getenv("SCOOTSHIP_BEHIND_TLS_PROXY")),
+		DataDir:              def(getenv("SCOOTSHIP_DATA_DIR"), "./data"),
+		AdminUser:            def(getenv("SCOOTSHIP_ADMIN_USER"), "admin"),
+		AdminPassword:        getenv("SCOOTSHIP_ADMIN_PASSWORD"),
+		NodeTokensFile:       getenv("SCOOTSHIP_NODE_TOKENS_FILE"),
+		NodeTokensInline:     getenv("SCOOTSHIP_NODE_TOKENS"),
+		Dev:                  truthy(getenv("SCOOTSHIP_DEV")),
+		StaleSeconds:         intDef(getenv("SCOOTSHIP_STALE_SECONDS"), 90),
+		MaxTelemetryByte:     int64(intDef(getenv("SCOOTSHIP_MAX_TELEMETRY_BYTES"), 8*1024*1024)),
+		AuditRetentionEvents: positiveIntDef(getenv("SCOOTSHIP_AUDIT_RETENTION_EVENTS"), 1000),
+		LoginMaxFails:        intDef(getenv("SCOOTSHIP_LOGIN_MAX_FAILS"), 5),
+		LoginWindow:          time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_WINDOW_SECONDS"), 900)) * time.Second,
+		LoginLockout:         time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_LOCKOUT_SECONDS"), 900)) * time.Second,
+		TrustedProxies:       parseProxies(getenv("SCOOTSHIP_TRUSTED_PROXIES")),
 	}
 }
 
@@ -96,6 +98,14 @@ func intDef(v string, fallback int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func positiveIntDef(v string, fallback int) int {
+	n := intDef(v, fallback)
+	if n <= 0 {
 		return fallback
 	}
 	return n
