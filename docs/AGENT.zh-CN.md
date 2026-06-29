@@ -8,6 +8,10 @@
 
 - [roadmap.zh-CN.md](roadmap.zh-CN.md)
 
+涉及生产部署、备份与恢复行为时，还要读：
+
+- [deployment.zh-CN.md](deployment.zh-CN.md)
+
 路线图是产品意图与非目标的来源。本文件是实现手册。若两者在范围上冲突，以路线图为准；若代码与文档在
 行为上冲突，可运行的代码与测试是即时的事实来源，文档必须被修正。
 路线图里的铁律不能靠解释放松。任何扩大节点策略、状态回写、命令执行、反向连接、协议依赖、存储敏感性或
@@ -69,6 +73,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `internal/version` | 构建版本字符串；release 构建会用从标签派生的 linker flags 覆盖 `Version`。 |
 | `.github/workflows` | CI 与标签驱动的 release 自动化，用于跨平台单二进制 artifacts。 |
 | `.agents/skills` | 项目本地 agent skills，用于 release 编排与全项目审计。 |
+| `docs/deployment.zh-CN.md` | 面向生产传输模式、数据权限、备份和恢复的运维手册。 |
 
 新增子系统时，优先用带聚焦接口的新 `internal/<name>` 包，而不是扩宽已有包。保持 `internal/protocol`
 无依赖。

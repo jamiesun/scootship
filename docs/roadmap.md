@@ -169,6 +169,9 @@ tested:
   `SCOOTSHIP_*` environment variables; production plain HTTP fails closed unless direct TLS,
   explicit dev mode, or explicit trusted TLS-proxy mode is configured (`cmd/scootship`,
   `internal/config`).
+- **Deployment, backup, and recovery runbook.** Operator documentation covers direct TLS versus
+  trusted TLS proxy mode, private data-directory and token-file permissions, systemd operation,
+  sensitive backup contents, restore steps, and post-restore verification (`docs/deployment.md`).
 - **CI, release automation, and project skills.** GitHub Actions run CI and tag-driven release
   builds for cross-platform single-binary archives with checksums; project-local skills document
   controlled release orchestration and whole-project audits (`.github/workflows`,
