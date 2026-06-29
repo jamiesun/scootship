@@ -68,6 +68,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |
 | `internal/config` | `SCOOTSHIP_*` 环境配置。 |
 | `internal/center` | HTTP 服务器、鉴权中间件、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、只读健康信号、仪表盘登录会话、仪表盘 + JSON API。 |
+| `internal/center/server_run_test.go` | 直连 TLS、显式 dev HTTP 与可信 TLS 反代 HTTP 模式的运行时传输 smoke 覆盖。 |
 | `internal/web` | `embed.FS` 仪表盘模板与静态资源。 |
 | `internal/mockedge` | 模拟的边缘节点（心跳、审计上报、lease 轮询）。 |
 | `internal/version` | 构建版本字符串；release 构建会用从标签派生的 linker flags 覆盖 `Version`。 |

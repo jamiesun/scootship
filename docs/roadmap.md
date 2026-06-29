@@ -323,10 +323,11 @@ or "admin-only" bypasses until these conditions are met:
 - A dispatch threat-model note covers queue abuse, replay/idempotency, capability spoofing,
   authorization, audit provenance, and rollback.
 
-Current gate status: **closed**. The E1 side now has evidence for production/dev transport
-fail-closed behavior, deployment/recovery docs, audit retention and gap visibility, token lifecycle
-governance, run audit timelines, read-only health signals, endpoint failure modes, and strict
-telemetry body validation. A pre-dispatch threat model exists in
+Current gate status: **closed**. The E1 side now has code and test evidence for direct TLS,
+trusted TLS-proxy HTTP, explicit dev HTTP, and fail-closed default plain HTTP behavior, plus
+deployment/recovery docs, audit retention and gap visibility, token lifecycle governance, run audit
+timelines, read-only health signals, endpoint failure modes, and strict telemetry body validation.
+A pre-dispatch threat model exists in
 [`dispatch-threat-model.md`](dispatch-threat-model.md), but its assumptions still require owner
 confirmation. E2 remains blocked until the Scoot-side unattended readonly clamp and compatible edge
 contract are published and dispatch-specific code/tests exist in Scootship.
