@@ -74,6 +74,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `.github/workflows` | CI 与标签驱动的 release 自动化，用于跨平台单二进制 artifacts。 |
 | `.agents/skills` | 项目本地 agent skills，用于 release 编排与全项目审计。 |
 | `docs/deployment.zh-CN.md` | 面向生产传输模式、数据权限、备份和恢复的运维手册。 |
+| `docs/dispatch-threat-model.zh-CN.md` | E2 预派发威胁模型；这是门禁材料，不是实现批准。 |
 
 新增子系统时，优先用带聚焦接口的新 `internal/<name>` 包，而不是扩宽已有包。保持 `internal/protocol`
 无依赖。

@@ -326,9 +326,10 @@ or "admin-only" bypasses until these conditions are met:
 Current gate status: **closed**. The E1 side now has evidence for production/dev transport
 fail-closed behavior, deployment/recovery docs, audit retention and gap visibility, token lifecycle
 governance, run audit timelines, read-only health signals, endpoint failure modes, and strict
-telemetry body validation. E2 remains blocked until the Scoot-side unattended readonly clamp and
-compatible edge contract are published, and until a dispatch threat model plus dispatch-specific code
-and tests exist in Scootship.
+telemetry body validation. A pre-dispatch threat model exists in
+[`dispatch-threat-model.md`](dispatch-threat-model.md), but its assumptions still require owner
+confirmation. E2 remains blocked until the Scoot-side unattended readonly clamp and compatible edge
+contract are published and dispatch-specific code/tests exist in Scootship.
 
 - **Long-poll-based job dispatch.** Implement the center-side semantics of
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
