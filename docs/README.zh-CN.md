@@ -120,6 +120,9 @@ make ci         # fmt-check + vet + test + build
 并以私有 `0600` 权限持久化到 `SCOOTSHIP_DATA_DIR/managed_node_tokens.json`。撤销状态也保存在这里，
 因此操作员可以撤销原本来自环境变量或私有 token 文件的令牌，而不需要编辑原始来源。
 
+生产部署、数据目录权限、TLS 反代边界、备份和恢复，请使用运维手册
+[`deployment.zh-CN.md`](deployment.zh-CN.md)。
+
 ## 协议对齐
 
 scootship 实现冻结的 `scoot-edge` v1 契约的**中心侧**。线缆形状位于
@@ -160,7 +163,8 @@ scootship 只说这份契约；它不依赖任何 Scoot 内部实现。
 ## 贡献
 
 修改前请阅读 [`AGENT.zh-CN.md`](AGENT.zh-CN.md)（工程手册）与
-[`roadmap.zh-CN.md`](roadmap.zh-CN.md)（意图与硬边界）。推送前运行 `make ci`。
+[`roadmap.zh-CN.md`](roadmap.zh-CN.md)（意图与硬边界）。生产运维请阅读
+[`deployment.zh-CN.md`](deployment.zh-CN.md)。推送前运行 `make ci`。
 
 ## 许可
 

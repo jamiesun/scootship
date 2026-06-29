@@ -128,6 +128,9 @@ accepted once, never displayed or returned by the API, and are persisted in
 stored there too, so an operator can revoke a token originally loaded from the env or private token
 file without editing that original source.
 
+For production setup, data-directory permissions, TLS proxy boundaries, backup, and restore, use the
+operator runbook in [`docs/deployment.md`](docs/deployment.md).
+
 ## Protocol alignment
 
 scootship implements the **center side** of the frozen `scoot-edge` v1 contract. The wire
@@ -172,7 +175,8 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 ## Contributing
 
 Read [`AGENT.md`](AGENT.md) (engineering handbook) and [`docs/roadmap.md`](docs/roadmap.md)
-(intent and hard boundaries) before making changes. Run `make ci` before pushing.
+(intent and hard boundaries) before making changes. For production operation, read
+[`docs/deployment.md`](docs/deployment.md). Run `make ci` before pushing.
 
 ## License
 

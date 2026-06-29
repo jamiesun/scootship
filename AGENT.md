@@ -8,6 +8,10 @@ Read this file before making changes. Then read the roadmap:
 
 - [docs/roadmap.md](docs/roadmap.md)
 
+For production deployment, backup, and recovery behavior, also read:
+
+- [docs/deployment.md](docs/deployment.md)
+
 The roadmap is the source of product intent and non-goals. This file is the implementation
 handbook. If the two disagree about scope, the roadmap wins; if code and docs disagree about
 behavior, runnable code and tests are the immediate source of truth and the docs must be fixed.
@@ -77,6 +81,7 @@ archives with checksums.
 | `internal/version` | Build version string; release builds override `Version` with tag-derived linker flags. |
 | `.github/workflows` | CI and tag-driven release automation for cross-platform single-binary artifacts. |
 | `.agents/skills` | Project-local agent skills for release orchestration and whole-project audits. |
+| `docs/deployment.md` | Operator runbook for production transport modes, data permissions, backup, and recovery. |
 
 When adding a subsystem, prefer a new `internal/<name>` package with a focused interface over
 widening an existing one. Keep `internal/protocol` dependency-free.
