@@ -77,6 +77,7 @@ type tokensPage struct {
 	Authenticated int
 	KnownNodes    int
 	Rows          []tokenRow
+	Manage        formMessage
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
@@ -174,12 +175,18 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	page := s.tokensPage(r, user, formMessage{})
+	s.render(w, "tokens", page)
+}
+
+func (s *Server) tokensPage(r *http.Request, user string, msg formMessage) tokensPage {
 	lang := requestLang(r)
 	rows := s.tokenRows(lang)
 	page := tokensPage{
 		basePage: s.base(r, user, "tokens", "page.tokens"),
 		Total:    len(rows),
 		Rows:     rows,
+		Manage:   msg,
 	}
 	for _, row := range rows {
 		if row.LastAuthenticatedMS != 0 {
@@ -189,7 +196,7 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 			page.KnownNodes++
 		}
 	}
-	s.render(w, "tokens", page)
+	return page
 }
 
 func (s *Server) handleAPITokens(w http.ResponseWriter, _ *http.Request) {

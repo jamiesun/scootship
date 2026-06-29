@@ -122,6 +122,12 @@ make ci         # fmt-check + vet + test + build
 `mock-edge` is a dev/test client configured by flags: `-center`, `-node`, `-token`,
 `-interval`, `-ship-audit`.
 
+The dashboard can also create, rotate, and revoke center-managed node tokens. Those secrets are
+accepted once, never displayed or returned by the API, and are persisted in
+`SCOOTSHIP_DATA_DIR/managed_node_tokens.json` with private `0600` permissions. Revocations are
+stored there too, so an operator can revoke a token originally loaded from the env or private token
+file without editing that original source.
+
 ## Protocol alignment
 
 scootship implements the **center side** of the frozen `scoot-edge` v1 contract. The wire
@@ -136,6 +142,9 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - **E1 health signals (implemented):** fleet and node pages derive read-only signals for stale nodes,
   version drift, audit body lag, retention gaps, duplicate audit reports, policy denies, system
   errors, and unrestricted local ceilings. They do not trigger remediation or mutate node state.
+- **Node token lifecycle (implemented):** dashboard operators can create, rotate, and revoke
+  center-managed per-node authentication tokens; secrets are never displayed, returned by APIs,
+  logged, or audited.
 - **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
   in Phase 1.
 
@@ -148,7 +157,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `cmd/scootship` | CLI entrypoint: `serve`, `mock-edge`, `version`. |
 | `internal/protocol` | The frozen scoot-edge v1 wire contract (envelope, bodies, cursor). |
 | `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, visible audit-retention gaps, and retained-window run timelines. |
-| `internal/tokens` | Per-node bearer-token registry plus dashboard-safe token inventory metadata (the center's node auth surface). |
+| `internal/tokens` | Per-node bearer-token registry, private managed lifecycle state, and dashboard-safe token inventory metadata (the center's node auth surface). |
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |
 | `internal/config` | Environment-driven configuration. |

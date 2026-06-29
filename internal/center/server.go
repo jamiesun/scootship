@@ -9,11 +9,11 @@ package center
 
 import (
 	"context"
+	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
-
-	"html/template"
 
 	"github.com/jamiesun/scootship/internal/config"
 	"github.com/jamiesun/scootship/internal/loginguard"
@@ -50,11 +50,12 @@ const (
 // embedded filesystem.
 func New(cfg config.Config, st store.Store, tk *tokens.Registry, ops *operators.Store, logger *slog.Logger) (*Server, error) {
 	tmpl, err := web.Templates(template.FuncMap{
-		"trunc":   trunc,
-		"initial": initial,
-		"t":       tr,
-		"tf":      trf,
-		"langURL": langURL,
+		"trunc":      trunc,
+		"initial":    initial,
+		"t":          tr,
+		"tf":         trf,
+		"langURL":    langURL,
+		"pathEscape": url.PathEscape,
 	})
 	if err != nil {
 		return nil, err
@@ -96,6 +97,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /{$}", s.requireAdmin(http.HandlerFunc(s.handleFleet)))
 	mux.Handle("GET /nodes/{id}", s.requireAdmin(http.HandlerFunc(s.handleNode)))
 	mux.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.handleTokens)))
+	mux.Handle("POST /tokens", s.requireAdmin(http.HandlerFunc(s.handleTokenCreate)))
+	mux.Handle("POST /tokens/{id}/rotate", s.requireAdmin(http.HandlerFunc(s.handleTokenRotate)))
+	mux.Handle("POST /tokens/{id}/revoke", s.requireAdmin(http.HandlerFunc(s.handleTokenRevoke)))
 	mux.Handle("GET /settings", s.requireAdmin(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("GET /account", s.requireAdmin(http.HandlerFunc(s.handleAccount)))
 	mux.Handle("POST /account", s.requireAdmin(http.HandlerFunc(s.handleAccountUpdate)))

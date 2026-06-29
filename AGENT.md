@@ -67,7 +67,7 @@ archives with checksums.
 | `cmd/scootship/main.go` | CLI: `serve`, `mock-edge`, `version`; env-driven startup; signal-based shutdown. |
 | `internal/protocol` | The frozen scoot-edge v1 contract: envelope, status/audit/job bodies, idempotency cursor. The narrowest, most stable surface — change only to track EDGE.md. |
 | `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, bounded dashboard audit window, explicit retention gaps, and retained-window run timelines. |
-| `internal/tokens` | Per-node bearer-token registry. The center's node auth surface; **not** node policy config. |
+| `internal/tokens` | Per-node bearer-token registry and private managed lifecycle overlay. The center's node auth surface; **not** node policy config. |
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
@@ -117,10 +117,10 @@ the roadmap's non-goals as enforceable engineering rules.
 ## Phase boundaries
 
 - **Phase 1 (now): observation + framework.** `status` and `audit_batch` ingest, the fleet
-  dashboard, node registry, per-node token auth, and the mock-edge harness.
+  dashboard, node registry, per-node token auth/lifecycle, and the mock-edge harness.
 - **Phase 1.5 (next): E1 operational maturity before new power.** Prefer production/dev transport
-  hardening, deployment docs, audit retention/gap visibility, run audit timelines, token
-  revoke/rotate flows, and read-only health signals before expanding the authority surface.
+  hardening, deployment docs, audit retention/gap visibility, run audit timelines, token lifecycle
+  hardening, and read-only health signals before expanding the authority surface.
 - **E2 (later, gated): job dispatch / orchestration.** The `/jobs/lease` endpoint is a stub
   today. Building real dispatch means capability/label routing, the only-lower policy clamp,
   idempotent `idem_key` apply, capacity backpressure, deadlines, and dispatch-provenance audit

@@ -21,6 +21,20 @@
     <section class="card">
       <h3>{{t .Lang "tokens.inventory"}}</h3>
       <p class="muted">{{t .Lang "tokens.metadata"}}</p>
+      {{if .Manage.OK}}<div class="form-ok">{{.Manage.OK}}</div>{{end}}
+      {{if .Manage.Error}}<div class="form-error">{{.Manage.Error}}</div>{{end}}
+      <form class="grid-form token-create-form" method="post" action="/tokens" autocomplete="off">
+        <label>{{t .Lang "fleet.node"}}
+          <input name="node_id" required>
+        </label>
+        <label>{{t .Lang "tokens.secret"}}
+          <input name="token" type="password" minlength="16" autocomplete="new-password" required>
+        </label>
+        <label>{{t .Lang "tokens.confirm_secret"}}
+          <input name="confirm_token" type="password" minlength="16" autocomplete="new-password" required>
+        </label>
+        <button type="submit">{{t .Lang "tokens.create"}}</button>
+      </form>
     </section>
 
     {{if .Rows}}
@@ -33,17 +47,31 @@
           <th>{{t .Lang "tokens.node_state"}}</th>
           <th>{{t .Lang "tokens.last_authenticated"}}</th>
           <th>{{t .Lang "fleet.last_seen"}}</th>
+          <th>{{t .Lang "tokens.actions"}}</th>
         </tr>
       </thead>
       <tbody>
         {{range .Rows}}
         <tr>
-          <td>{{if .KnownNode}}<a href="/nodes/{{.NodeID}}" class="node-link">{{.NodeID}}</a>{{else}}<span class="mono">{{.NodeID}}</span>{{end}}</td>
+          <td>{{if .KnownNode}}<a href="/nodes/{{pathEscape .NodeID}}" class="node-link">{{.NodeID}}</a>{{else}}<span class="mono">{{.NodeID}}</span>{{end}}</td>
           <td><span class="tag source source-{{.Source}}">{{.Source}}</span></td>
           <td class="mono muted">{{.Fingerprint}}</td>
           <td>{{if .KnownNode}}{{if .Online}}<span class="pill ok">{{t $.Lang "fleet.online"}}</span>{{else}}<span class="pill warn">{{t $.Lang "fleet.stale"}}</span>{{end}}{{else}}<span class="pill muted-pill">{{t $.Lang "tokens.not_reported"}}</span>{{end}}</td>
           <td class="muted">{{.LastAuthenticatedAgo}}</td>
           <td class="muted">{{.LastSeenAgo}}</td>
+          <td class="token-actions">
+            <details>
+              <summary>{{t $.Lang "tokens.rotate"}}</summary>
+              <form class="inline-token-form" method="post" action="/tokens/{{pathEscape .NodeID}}/rotate" autocomplete="off">
+                <input name="token" type="password" minlength="16" autocomplete="new-password" placeholder="{{t $.Lang "tokens.secret"}}" required>
+                <input name="confirm_token" type="password" minlength="16" autocomplete="new-password" placeholder="{{t $.Lang "tokens.confirm_secret"}}" required>
+                <button type="submit">{{t $.Lang "tokens.rotate"}}</button>
+              </form>
+            </details>
+            <form class="revoke-form" method="post" action="/tokens/{{pathEscape .NodeID}}/revoke">
+              <button class="danger-btn" type="submit">{{t $.Lang "tokens.revoke"}}</button>
+            </form>
+          </td>
         </tr>
         {{end}}
       </tbody>
