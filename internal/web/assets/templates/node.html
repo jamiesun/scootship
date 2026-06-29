@@ -15,6 +15,22 @@
       </div>
     </section>
 
+    <section class="card">
+      <h3>{{t .Lang "health.signals"}} <span class="muted">({{t .Lang "health.read_only"}})</span></h3>
+      {{if .HealthSignals}}
+        <div class="health-list">
+          {{range .HealthSignals}}
+          <div class="health-signal health-{{.Severity}}">
+            <strong>{{.Title}}</strong>
+            <span>{{.Detail}}</span>
+          </div>
+          {{end}}
+        </div>
+      {{else}}
+        <p class="muted">{{t .Lang "health.none"}}</p>
+      {{end}}
+    </section>
+
     <section class="cols">
       <div class="card">
         <h3>{{t .Lang "node.audit_stats"}} <span class="muted">({{t .Lang "node.derived_counts"}})</span></h3>

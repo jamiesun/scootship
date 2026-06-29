@@ -268,6 +268,8 @@ func (m *Mem) IngestAudit(nodeID string, recvMS int64, batch protocol.AuditBatch
 	defer m.mu.Unlock()
 	ns := m.node(nodeID)
 	if !batch.Cursor.After(ns.view.Cursor) {
+		ns.view.AuditLifecycle.DuplicateReports++
+		ns.view.AuditLifecycle.LastDuplicateMS = recvMS
 		return ns.view.Cursor, 0, nil // duplicate: ack the cursor we already hold
 	}
 	c := batch.Cursor

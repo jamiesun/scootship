@@ -32,6 +32,9 @@ type nodeRow struct {
 	AuditStored     int
 	LastSeenAgo     string
 	Labels          []string
+	HealthSignals   []healthSignal
+	HealthLevel     string
+	HealthSummary   string
 }
 
 type fleetPage struct {
@@ -40,17 +43,20 @@ type fleetPage struct {
 	Total  int
 	Online int
 	Stale  int
+	Health int
 	Nodes  []nodeRow
 }
 
 type nodePage struct {
 	basePage
-	Node        store.NodeView
-	Online      bool
-	LastSeenAgo string
-	AuditGapAgo string
-	Timelines   []store.AuditTimeline
-	Audits      []store.StoredAudit
+	Node          store.NodeView
+	Online        bool
+	LastSeenAgo   string
+	AuditGapAgo   string
+	HealthSignals []healthSignal
+	HealthLevel   string
+	Timelines     []store.AuditTimeline
+	Audits        []store.StoredAudit
 }
 
 type tokenRow struct {
@@ -77,6 +83,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
 	lang := requestLang(r)
 	nodes := s.store.Nodes()
+	ctx := buildHealthContext(nodes)
 	page := fleetPage{
 		basePage: s.base(r, user, "fleet", "page.fleet"),
 		Addr:     s.cfg.Addr,
@@ -101,6 +108,10 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			AuditStored:     n.AuditStored,
 			LastSeenAgo:     s.agoLang(lang, n.LastSeenMS),
 		}
+		row.HealthSignals = s.nodeHealthSignals(lang, n, ctx)
+		row.HealthLevel = strongestHealth(row.HealthSignals)
+		row.HealthSummary = signalSummary(row.HealthSignals)
+		page.Health += len(row.HealthSignals)
 		if n.Descriptor != nil {
 			row.Labels = n.Descriptor.Labels
 		}
@@ -118,22 +129,28 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not_found", "unknown node")
 		return
 	}
+	ctx := buildHealthContext(s.store.Nodes())
+	signals := s.nodeHealthSignals(lang, n, ctx)
 	page := nodePage{
-		basePage:    s.baseTitle(r, user, "fleet", tr(lang, "fleet.node")+" "+id),
-		Node:        n,
-		Online:      s.online(n.LastSeenMS),
-		LastSeenAgo: s.agoLang(lang, n.LastSeenMS),
-		AuditGapAgo: s.agoLang(lang, n.AuditLifecycle.LastGapRecvMS),
-		Timelines:   s.store.AuditTimelines(id, 25),
-		Audits:      s.store.AuditEvents(id, 100),
+		basePage:      s.baseTitle(r, user, "fleet", tr(lang, "fleet.node")+" "+id),
+		Node:          n,
+		Online:        s.online(n.LastSeenMS),
+		LastSeenAgo:   s.agoLang(lang, n.LastSeenMS),
+		AuditGapAgo:   s.agoLang(lang, n.AuditLifecycle.LastGapRecvMS),
+		HealthSignals: signals,
+		HealthLevel:   strongestHealth(signals),
+		Timelines:     s.store.AuditTimelines(id, 25),
+		Audits:        s.store.AuditEvents(id, 100),
 	}
 	s.render(w, "node", page)
 }
 
 func (s *Server) handleAPIFleet(w http.ResponseWriter, _ *http.Request) {
+	nodes := s.store.Nodes()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"now_ms": s.now().UnixMilli(),
-		"nodes":  s.store.Nodes(),
+		"nodes":  nodes,
+		"health": s.healthByNode("en", nodes),
 	})
 }
 
@@ -144,10 +161,12 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not_found", "unknown node")
 		return
 	}
+	ctx := buildHealthContext(s.store.Nodes())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"now_ms":    s.now().UnixMilli(),
 		"online":    s.online(n.LastSeenMS),
 		"node":      n,
+		"health":    s.nodeHealthSignals("en", n, ctx),
 		"audits":    s.store.AuditEvents(id, 100),
 		"timelines": s.store.AuditTimelines(id, 25),
 	})

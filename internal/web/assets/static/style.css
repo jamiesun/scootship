@@ -438,6 +438,14 @@ tbody tr:hover {
     background: rgba(224, 164, 88, 0.15);
     color: var(--warn);
 }
+.pill.health-warn {
+    background: rgba(224, 164, 88, 0.15);
+    color: var(--warn);
+}
+.pill.health-danger {
+    background: rgba(229, 104, 122, 0.14);
+    color: var(--danger);
+}
 .pill.muted-pill {
     background: var(--panel-2);
     color: var(--muted);
@@ -474,6 +482,38 @@ td.warn,
 }
 .audit-gap.warn {
     color: var(--warn);
+}
+.health-list {
+    display: grid;
+    gap: 10px;
+}
+.health-signal {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+}
+.health-signal strong {
+    font-size: 13px;
+}
+.health-signal span {
+    color: var(--muted);
+}
+.health-signal.health-warn {
+    border-color: rgba(224, 164, 88, 0.34);
+    background: rgba(224, 164, 88, 0.1);
+}
+.health-signal.health-danger {
+    border-color: rgba(229, 104, 122, 0.36);
+    background: rgba(229, 104, 122, 0.11);
+}
+.health-signal.health-warn strong {
+    color: var(--warn);
+}
+.health-signal.health-danger strong {
+    color: var(--danger);
 }
 
 .ceiling {

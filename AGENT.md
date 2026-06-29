@@ -71,7 +71,7 @@ archives with checksums.
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
-| `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, dashboard login session, dashboard + JSON API. |
+| `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, read-only health signals, dashboard login session, dashboard + JSON API. |
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
 | `internal/version` | Build version string; release builds override `Version` with tag-derived linker flags. |

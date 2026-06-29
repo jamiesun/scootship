@@ -147,6 +147,10 @@ tested:
 - **Run audit timeline over retained audit.** Node detail API/pages group retained audit events by
   `session_id` / `run_id` and order each run by `seq` / `ts`, so recent agent activity can be read
   without opening raw JSONL (`internal/store`, `internal/center`, `internal/web`).
+- **Read-only health signals.** Fleet and node views derive dashboard-visible health signals for
+  offline/stale nodes, version drift, audit body lag, audit retention gaps, duplicate audit reports,
+  policy denies, system errors, and unrestricted local ceilings without adding any remediation path
+  (`internal/center`, `internal/web`).
 - **Node registry and token auth.** Per-node bearer-token auth; a token may only ever speak for its
   own `node_id`; the dashboard exposes read-only token inventory metadata (source, fingerprint,
   last authentication) without displaying bearer secrets (`internal/tokens`, `internal/center`).

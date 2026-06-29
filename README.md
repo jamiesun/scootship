@@ -133,6 +133,9 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
   stored cursor so the edge only advances after a durable ack. The recent audit window is bounded by
   `SCOOTSHIP_AUDIT_RETENTION_EVENTS`; trimming is visible as a center-side `audit_gap`. Node detail
   API/pages also group retained audit by `session_id` / `run_id` into chronological run timelines.
+- **E1 health signals (implemented):** fleet and node pages derive read-only signals for stale nodes,
+  version drift, audit body lag, retention gaps, duplicate audit reports, policy denies, system
+  errors, and unrestricted local ceilings. They do not trigger remediation or mutate node state.
 - **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
   in Phase 1.
 
@@ -149,7 +152,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |
 | `internal/config` | Environment-driven configuration. |
-| `internal/center` | HTTP server, bearer + login-session auth, telemetry ingest, lease stub, dashboard + JSON API. |
+| `internal/center` | HTTP server, bearer + login-session auth, telemetry ingest, lease stub, read-only health signals, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
 | `internal/version` | Build version string; release builds override it from the tag. |
