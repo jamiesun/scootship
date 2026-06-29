@@ -377,6 +377,53 @@ func TestTelemetryAuth(t *testing.T) {
 	}
 }
 
+func TestTelemetryFailureModesDoNotMutateStore(t *testing.T) {
+	tooLargeCfg := defaultCfg()
+	tooLargeCfg.MaxTelemetryByte = 32
+	tooLargeTS, _ := newServer(t, tooLargeCfg)
+
+	validStatus := envBytes(t, protocol.TypeStatus, "n-1", protocol.StatusBody{ScootVersion: "0.9.0"})
+	tooLargeResp, tooLargeBody := postTelemetry(t, tooLargeTS.URL, "secret", validStatus)
+	assertJSONError(t, tooLargeResp, tooLargeBody, http.StatusRequestEntityTooLarge, "too_large")
+
+	ts, st := newTestServer(t)
+	resp, body := postTelemetry(t, ts.URL, "secret", []byte(`{`))
+	assertJSONError(t, resp, body, http.StatusBadRequest, "bad_json")
+
+	resp, body = postTelemetry(t, ts.URL, "secret", nil)
+	assertJSONError(t, resp, body, http.StatusBadRequest, "empty")
+
+	badVersion := protocol.Envelope{V: 2, Type: protocol.TypeStatus, NodeID: "n-1", SentTS: 1, Body: json.RawMessage(`{}`)}
+	rawBadVersion, err := json.Marshal(badVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, body = postTelemetry(t, ts.URL, "secret", rawBadVersion)
+	assertJSONError(t, resp, body, http.StatusBadRequest, "bad_envelope")
+
+	jobEnvelope := protocol.Envelope{V: 1, Type: protocol.TypeJob, NodeID: "n-1", SentTS: 1, Body: json.RawMessage(`{}`)}
+	rawJob, err := json.Marshal(jobEnvelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, body = postTelemetry(t, ts.URL, "secret", rawJob)
+	assertJSONError(t, resp, body, http.StatusBadRequest, "wrong_direction")
+
+	// A mixed batch is validated before application; a valid first envelope must
+	// not be applied if a later envelope is invalid.
+	ts2, st2 := newTestServer(t)
+	mixed := append(append([]byte{}, validStatus...), '\n')
+	mixed = append(mixed, rawBadVersion...)
+	resp, body = postTelemetry(t, ts2.URL, "secret", mixed)
+	assertJSONError(t, resp, body, http.StatusBadRequest, "bad_envelope")
+	if nodes := st2.Nodes(); len(nodes) != 0 {
+		t.Fatalf("invalid batch mutated store: %+v", nodes)
+	}
+	if nodes := st.Nodes(); len(nodes) != 0 {
+		t.Fatalf("failure cases mutated store: %+v", nodes)
+	}
+}
+
 func TestDashboardRequiresLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
 
@@ -732,6 +779,19 @@ func TestLeaseIsObservationOnly(t *testing.T) {
 	}
 }
 
+func TestLeaseRejectsNodeMismatch(t *testing.T) {
+	ts, _ := newTestServer(t)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/jobs/lease?node=n-other&capacity=1", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assertJSONError(t, resp, body, http.StatusForbidden, "node_mismatch")
+}
+
 func TestTokenInventoryDoesNotExposeSecrets(t *testing.T) {
 	ts, _ := newTestServer(t)
 	status := protocol.StatusBody{ScootVersion: "0.9.0"}
@@ -877,4 +937,18 @@ func getJSON(t *testing.T, client *http.Client, url string) map[string]any {
 		t.Fatalf("decode %s: %v", url, err)
 	}
 	return m
+}
+
+func assertJSONError(t *testing.T, resp *http.Response, body []byte, status int, code string) {
+	t.Helper()
+	if resp.StatusCode != status {
+		t.Fatalf("status=%d body=%s, want %d", resp.StatusCode, body, status)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode error response: %v body=%s", err, body)
+	}
+	if got["ok"] != false || got["code"] != code {
+		t.Fatalf("error response = %v, want ok=false code=%s", got, code)
+	}
 }
