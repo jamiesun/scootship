@@ -89,12 +89,14 @@ func (s *Server) currentUser(r *http.Request) (string, bool) {
 
 // loginPage is the login view model.
 type loginPage struct {
-	Title      string
-	Version    string
-	Next       string
-	Error      string
-	Configured bool
-	DevHint    bool
+	Title       string
+	Version     string
+	Next        string
+	Error       string
+	Configured  bool
+	DevHint     bool
+	Lang        string
+	CurrentPath string
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
@@ -102,16 +104,17 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
 		return
 	}
-	s.renderLogin(w, safeNext(r.URL.Query().Get("next")), "")
+	s.renderLogin(w, r, safeNext(r.URL.Query().Get("next")), "")
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(r)
 	if !s.operators.Configured() {
-		s.renderLogin(w, "/", "Dashboard auth is not configured on the server.")
+		s.renderLogin(w, r, "/", tr(lang, "form.dashboard_locked"))
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.renderLogin(w, "/", "Could not read the form.")
+		s.renderLogin(w, r, "/", tr(lang, "form.read_failed"))
 		return
 	}
 	ip := s.clientIP(r)
@@ -125,7 +128,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// credentials, so a guesser cannot keep trying during the lockout.
 	if d := s.loginGuard.Check(ip, now); !d.Allowed {
 		s.log.Warn("dashboard login throttled", "ip", ip, "retry_after_s", int(d.RetryAfter.Seconds()))
-		s.tooManyLogins(w, next, d.RetryAfter)
+		s.tooManyLogins(w, r, next, d.RetryAfter)
 		return
 	}
 
@@ -134,12 +137,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		d := s.loginGuard.Fail(ip, now)
 		if !d.Allowed {
 			s.log.Warn("dashboard login locked out", "ip", ip, "retry_after_s", int(d.RetryAfter.Seconds()))
-			s.tooManyLogins(w, next, d.RetryAfter)
+			s.tooManyLogins(w, r, next, d.RetryAfter)
 			return
 		}
 		// Generic message: do not confirm whether the username exists.
 		s.log.Warn("failed dashboard login", "ip", ip, "remaining", d.Remaining)
-		s.renderLoginStatus(w, http.StatusUnauthorized, next, "Invalid username or password.")
+		s.renderLoginStatus(w, r, http.StatusUnauthorized, next, tr(lang, "form.invalid_login"))
 		return
 	}
 
@@ -159,14 +162,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // tooManyLogins renders the login page with 429 and a Retry-After hint, without
 // leaking whether the credentials were otherwise valid.
-func (s *Server) tooManyLogins(w http.ResponseWriter, next string, retryAfter time.Duration) {
+func (s *Server) tooManyLogins(w http.ResponseWriter, r *http.Request, next string, retryAfter time.Duration) {
 	secs := int(retryAfter.Seconds())
 	if secs < 1 {
 		secs = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
-	s.renderLoginStatus(w, http.StatusTooManyRequests, next,
-		"Too many failed attempts. Please wait and try again.")
+	s.renderLoginStatus(w, r, http.StatusTooManyRequests, next, tr(requestLang(r), "form.too_many_logins"))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -177,20 +179,28 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-func (s *Server) renderLogin(w http.ResponseWriter, next, errMsg string) {
-	s.renderLoginStatus(w, http.StatusOK, next, errMsg)
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, next, errMsg string) {
+	s.renderLoginStatus(w, r, http.StatusOK, next, errMsg)
 }
 
 // renderLoginStatus renders the login page with an explicit status code so a
 // rejected (401) or throttled (429) attempt carries the right semantics.
-func (s *Server) renderLoginStatus(w http.ResponseWriter, status int, next, errMsg string) {
+func (s *Server) renderLoginStatus(w http.ResponseWriter, r *http.Request, status int, next, errMsg string) {
+	lang := "en"
+	current := "/login"
+	if r != nil {
+		lang = requestLang(r)
+		current = r.URL.RequestURI()
+	}
 	s.renderStatus(w, status, "login", loginPage{
-		Title:      "Sign in",
-		Version:    version.Version,
-		Next:       next,
-		Error:      errMsg,
-		Configured: s.operators.Configured(),
-		DevHint:    s.cfg.Dev,
+		Title:       tr(lang, "page.sign_in"),
+		Version:     version.Version,
+		Next:        next,
+		Error:       errMsg,
+		Configured:  s.operators.Configured(),
+		DevHint:     s.cfg.Dev,
+		Lang:        lang,
+		CurrentPath: current,
 	})
 }
 

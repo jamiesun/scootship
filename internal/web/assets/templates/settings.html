@@ -1,30 +1,30 @@
 {{define "settings"}}{{template "header" .}}
-    <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>settings</span></nav>
+    <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <span>{{t .Lang "common.settings"}}</span></nav>
 
     <section class="page-head">
-      <h1>Settings</h1>
+      <h1>{{t .Lang "page.settings"}}</h1>
     </section>
 
     <section class="cols">
       <a class="card link-card" href="/operators">
-        <h3>Operators</h3>
-        <p class="muted">Manage dashboard accounts, profiles, and password resets.</p>
-        <span class="link-count">{{.Operators}} configured</span>
+        <h3>{{t .Lang "page.operators"}}</h3>
+        <p class="muted">{{t .Lang "settings.manage_accounts"}}</p>
+        <span class="link-count">{{tf .Lang "common.configured" .Operators}}</span>
       </a>
       <a class="card link-card" href="/account">
-        <h3>Account</h3>
-        <p class="muted">Update your own display name, email, and password.</p>
-        <span class="link-count">signed in as {{.User}}</span>
+        <h3>{{t .Lang "page.account"}}</h3>
+        <p class="muted">{{t .Lang "account.update_own"}}</p>
+        <span class="link-count">{{tf .Lang "common.signed_in_as" .User}}</span>
       </a>
       <a class="card link-card" href="/tokens">
-        <h3>Tokens</h3>
-        <p class="muted">Read-only node token inventory across {{.Nodes}} known nodes.</p>
-        <span class="link-count">{{.Tokens}} tokens</span>
+        <h3>{{t .Lang "page.tokens"}}</h3>
+        <p class="muted">{{tf .Lang "settings.token_inventory" .Nodes}}</p>
+        <span class="link-count">{{tf .Lang "common.tokens_count" .Tokens}}</span>
       </a>
     </section>
 
     <section class="card">
-      <h3>Center Configuration <span class="muted">(read-only · set via environment)</span></h3>
+      <h3>{{t .Lang "settings.center_config"}} <span class="muted">({{t .Lang "settings.read_only_env"}})</span></h3>
       <table class="kv">
         {{range .Center}}
         <tr><td>{{.Key}}</td><td class="{{if .Warn}}warn{{end}}">{{.Value}}</td></tr>
@@ -33,7 +33,7 @@
     </section>
 
     <section class="card">
-      <h3>Login Protection <span class="muted">(per source IP)</span></h3>
+      <h3>{{t .Lang "settings.login_protection"}} <span class="muted">({{t .Lang "settings.source_ip"}})</span></h3>
       <table class="kv">
         {{range .Security}}
         <tr><td>{{.Key}}</td><td>{{.Value}}</td></tr>

@@ -1,0 +1,355 @@
+package center
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+const langCookie = "scootship_lang"
+
+func languageMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if lang, ok := cleanLang(r.URL.Query().Get("lang")); ok {
+			http.SetCookie(w, &http.Cookie{
+				Name:     langCookie,
+				Value:    lang,
+				Path:     "/",
+				MaxAge:   365 * 24 * 60 * 60,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   r.TLS != nil,
+			})
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requestLang(r *http.Request) string {
+	if lang, ok := cleanLang(r.URL.Query().Get("lang")); ok {
+		return lang
+	}
+	if c, err := r.Cookie(langCookie); err == nil {
+		if lang, ok := cleanLang(c.Value); ok {
+			return lang
+		}
+	}
+	for _, part := range strings.Split(r.Header.Get("Accept-Language"), ",") {
+		part = strings.TrimSpace(strings.ToLower(part))
+		if strings.HasPrefix(part, "zh") {
+			return "zh"
+		}
+		if strings.HasPrefix(part, "en") {
+			return "en"
+		}
+	}
+	return "en"
+}
+
+func cleanLang(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "en":
+		return "en", true
+	case "zh", "zh-cn", "zh_hans":
+		return "zh", true
+	default:
+		return "", false
+	}
+}
+
+func langURL(current, lang string) string {
+	if _, ok := cleanLang(lang); !ok {
+		lang = "en"
+	}
+	if current == "" {
+		current = "/"
+	}
+	u, err := url.ParseRequestURI(current)
+	if err != nil {
+		u = &url.URL{Path: "/"}
+	}
+	q := u.Query()
+	q.Set("lang", lang)
+	u.RawQuery = q.Encode()
+	return u.RequestURI()
+}
+
+func tr(lang, key string) string {
+	if m, ok := translations[lang]; ok {
+		if v, ok := m[key]; ok {
+			return v
+		}
+	}
+	if v, ok := translations["en"][key]; ok {
+		return v
+	}
+	return key
+}
+
+func trf(lang, key string, args ...any) string {
+	return fmt.Sprintf(tr(lang, key), args...)
+}
+
+var translations = map[string]map[string]string{
+	"en": {
+		"account.basic_information":       "Basic Information",
+		"account.change_password":         "Change Password",
+		"account.confirm_new_password":    "Confirm new password",
+		"account.current_password":        "Current password",
+		"account.email":                   "Email",
+		"account.new_password":            "New password",
+		"account.save_profile":            "Save profile",
+		"account.title":                   "Account",
+		"account.update_own":              "Update your own display name, email, and password.",
+		"common.account":                  "account",
+		"common.configured":               "%d configured",
+		"common.create":                   "Create",
+		"common.display_name":             "Display name",
+		"common.edit":                     "edit",
+		"common.email":                    "Email",
+		"common.fleet":                    "fleet",
+		"common.never":                    "never",
+		"common.operators":                "operators",
+		"common.settings":                 "settings",
+		"common.signed_in_as":             "signed in as %s",
+		"common.tokens_count":             "%d tokens",
+		"common.username":                 "Username",
+		"fleet.audit":                     "audit",
+		"fleet.ceiling":                   "ceiling",
+		"fleet.daemon":                    "daemon",
+		"fleet.denies":                    "denies",
+		"fleet.empty_body":                "The center is waiting for a scoot-edge to dial out and POST telemetry. Until the real edge binary exists (it is E0 design-only today), drive the full heartbeat -> ingest -> dashboard path with the built-in simulator:",
+		"fleet.empty_title":               "No nodes have reported yet.",
+		"fleet.edge":                      "edge",
+		"fleet.known_nodes":               "known nodes",
+		"fleet.last_seen":                 "last seen",
+		"fleet.node":                      "node",
+		"fleet.nodes":                     "nodes",
+		"fleet.online":                    "online",
+		"fleet.runs":                      "runs",
+		"fleet.scoot":                     "scoot",
+		"fleet.stale":                     "stale",
+		"fleet.state":                     "state",
+		"form.current_password_incorrect": "Current password is incorrect.",
+		"form.invalid_login":              "Invalid username or password.",
+		"form.operator_created":           "Operator created.",
+		"form.operator_duplicate":         "Operator already exists.",
+		"form.operator_invalid":           "Username and password are required.",
+		"form.password_changed":           "Password changed.",
+		"form.password_mismatch":          "Passwords do not match.",
+		"form.password_reset":             "Password reset.",
+		"form.profile_updated":            "Profile updated.",
+		"form.read_failed":                "Could not read the form.",
+		"form.reset_password_failed":      "Could not reset password.",
+		"form.too_many_logins":            "Too many failed attempts. Please wait and try again.",
+		"form.update_profile_failed":      "Could not update profile.",
+		"form.change_password_failed":     "Could not change password.",
+		"form.create_operator_failed":     "Could not create operator.",
+		"form.dashboard_locked":           "Dashboard auth is not configured on the server.",
+		"form.new_password_mismatch":      "New passwords do not match.",
+		"layout.auto_refresh":             "auto-refresh",
+		"layout.dispatch":                 "Dispatch",
+		"layout.dispatch_title":           "Dispatch / orchestration is EDGE.md E2 — not built in phase 1",
+		"layout.footer_boundary":          "append-only ingest · the center never raises a node's policy ceiling",
+		"layout.health":                   "Health",
+		"layout.language":                 "Language",
+		"layout.sign_out":                 "Sign out",
+		"layout.tagline":                  "scoot fleet center · phase 1 · observation",
+		"layout.toggle_menu":              "Toggle menu",
+		"login.auth_not_configured":       "Dashboard auth is not configured. Set SCOOTSHIP_ADMIN_PASSWORD on the server.",
+		"login.dev_hint":                  "dev mode default:",
+		"login.password":                  "Password",
+		"login.remember":                  "Remember this device for 30 days",
+		"login.sign_in":                   "Sign in",
+		"login.sub":                       "scoot fleet center · sign in",
+		"login.username":                  "Username",
+		"node.advisory":                   "advisory, never authority",
+		"node.audit_cursor":               "audit cursor",
+		"node.audit_stats":                "Audit Stats",
+		"node.capability_descriptor":      "Capability Descriptor",
+		"node.clean_prev_stop":            "clean prev stop",
+		"node.derived_counts":             "derived counts from the node",
+		"node.no_audit":                   "No audit bodies ingested. Audit shipping is off by default on the edge; only the status heartbeat (counts, never bodies) is sent until a node opts in.",
+		"node.no_descriptor":              "No descriptor reported (capability reporting is off by default on the edge).",
+		"node.policy_ceiling":             "policy ceiling",
+		"node.recent_audit":               "Recent Ingested Audit",
+		"node.recent_audit_hint":          "%d shown · newest first",
+		"operators.create_operator":       "Create operator",
+		"operators.initial_password":      "Initial password",
+		"operators.last_login":            "last login",
+		"operators.management":            "Operator Management",
+		"operators.no_operators":          "No operators configured.",
+		"operators.reset_password":        "Reset Password",
+		"operators.reset_password_action": "Reset password",
+		"operators.title":                 "Operator",
+		"page.account":                    "Account",
+		"page.create_operator":            "Create operator",
+		"page.fleet":                      "Fleet",
+		"page.operators":                  "Operators",
+		"page.settings":                   "Settings",
+		"page.sign_in":                    "Sign in",
+		"page.tokens":                     "Tokens",
+		"settings.center_config":          "Center Configuration",
+		"settings.data_dir":               "data dir",
+		"settings.dev_mode":               "dev mode",
+		"settings.login_protection":       "Login Protection",
+		"settings.listen_address":         "listen address",
+		"settings.login_lockout":          "login lockout",
+		"settings.login_max_fails":        "login max fails",
+		"settings.login_window":           "login window",
+		"settings.max_telemetry_body":     "max telemetry body",
+		"settings.off":                    "off",
+		"settings.on":                     "on",
+		"settings.manage_accounts":        "Manage dashboard accounts, profiles, and password resets.",
+		"settings.read_only_env":          "read-only · set via environment",
+		"settings.source_ip":              "per source IP",
+		"settings.stale_after":            "stale after",
+		"settings.tls":                    "tls",
+		"settings.tls_disabled":           "disabled",
+		"settings.tls_enabled":            "enabled",
+		"settings.tls_proxy":              "terminated by proxy",
+		"settings.token_inventory":        "Read-only node token inventory across %d known nodes.",
+		"settings.version":                "version",
+		"tokens.authenticated":            "used",
+		"tokens.empty_body":               "Set SCOOTSHIP_NODE_TOKENS_FILE to a private JSON file or SCOOTSHIP_NODE_TOKENS for local testing. Without a configured token, no edge can authenticate.",
+		"tokens.empty_title":              "No node tokens are configured.",
+		"tokens.fingerprint":              "fingerprint",
+		"tokens.inventory":                "Token Inventory",
+		"tokens.last_authenticated":       "last authenticated",
+		"tokens.metadata":                 "Read-only metadata. Bearer token secrets are never displayed, returned by the API, logged, or written to audit.",
+		"tokens.node_state":               "node state",
+		"tokens.not_reported":             "not reported",
+		"tokens.source":                   "source",
+	},
+	"zh": {
+		"account.basic_information":       "基本信息",
+		"account.change_password":         "修改密码",
+		"account.confirm_new_password":    "确认新密码",
+		"account.current_password":        "当前密码",
+		"account.email":                   "邮箱",
+		"account.new_password":            "新密码",
+		"account.save_profile":            "保存资料",
+		"account.title":                   "账户",
+		"account.update_own":              "更新你自己的显示名、邮箱和密码。",
+		"common.account":                  "账户",
+		"common.configured":               "已配置 %d 个",
+		"common.create":                   "创建",
+		"common.display_name":             "显示名",
+		"common.edit":                     "编辑",
+		"common.email":                    "邮箱",
+		"common.fleet":                    "车队",
+		"common.never":                    "从未",
+		"common.operators":                "操作员",
+		"common.settings":                 "设置",
+		"common.signed_in_as":             "当前登录：%s",
+		"common.tokens_count":             "%d 个令牌",
+		"common.username":                 "用户名",
+		"fleet.audit":                     "审计",
+		"fleet.ceiling":                   "上限",
+		"fleet.daemon":                    "守护进程",
+		"fleet.denies":                    "拒绝",
+		"fleet.empty_body":                "中心正在等待 scoot-edge 向外拨号并 POST 遥测。在真实 edge 二进制存在前（目前仍是 E0 设计态），可以用内置模拟器跑通 心跳 -> 摄入 -> 仪表盘 链路：",
+		"fleet.empty_title":               "还没有节点上报。",
+		"fleet.edge":                      "edge",
+		"fleet.known_nodes":               "已知节点",
+		"fleet.last_seen":                 "最近上报",
+		"fleet.node":                      "节点",
+		"fleet.nodes":                     "节点",
+		"fleet.online":                    "在线",
+		"fleet.runs":                      "运行",
+		"fleet.scoot":                     "scoot",
+		"fleet.stale":                     "离线",
+		"fleet.state":                     "状态",
+		"form.current_password_incorrect": "当前密码不正确。",
+		"form.invalid_login":              "用户名或密码无效。",
+		"form.operator_created":           "操作员已创建。",
+		"form.operator_duplicate":         "操作员已存在。",
+		"form.operator_invalid":           "用户名和密码必填。",
+		"form.password_changed":           "密码已修改。",
+		"form.password_mismatch":          "两次密码不一致。",
+		"form.password_reset":             "密码已重置。",
+		"form.profile_updated":            "资料已更新。",
+		"form.read_failed":                "无法读取表单。",
+		"form.reset_password_failed":      "无法重置密码。",
+		"form.too_many_logins":            "失败次数过多，请稍后再试。",
+		"form.update_profile_failed":      "无法更新资料。",
+		"form.change_password_failed":     "无法修改密码。",
+		"form.create_operator_failed":     "无法创建操作员。",
+		"form.dashboard_locked":           "服务端尚未配置仪表盘鉴权。",
+		"form.new_password_mismatch":      "两次新密码不一致。",
+		"layout.auto_refresh":             "自动刷新",
+		"layout.dispatch":                 "派发",
+		"layout.dispatch_title":           "派发 / 编排属于 EDGE.md E2，阶段一尚未构建",
+		"layout.footer_boundary":          "append-only 摄入 · 中心绝不抬高节点策略上限",
+		"layout.health":                   "健康",
+		"layout.language":                 "语言",
+		"layout.sign_out":                 "退出",
+		"layout.tagline":                  "scoot 车队中心 · 阶段一 · 仅观测",
+		"layout.toggle_menu":              "展开/收起菜单",
+		"login.auth_not_configured":       "仪表盘鉴权尚未配置。请在服务端设置 SCOOTSHIP_ADMIN_PASSWORD。",
+		"login.dev_hint":                  "开发模式默认：",
+		"login.password":                  "密码",
+		"login.remember":                  "在此设备记住登录 30 天",
+		"login.sign_in":                   "登录",
+		"login.sub":                       "scoot 车队中心 · 登录",
+		"login.username":                  "用户名",
+		"node.advisory":                   "仅供参考，不是授权依据",
+		"node.audit_cursor":               "审计游标",
+		"node.audit_stats":                "审计统计",
+		"node.capability_descriptor":      "能力描述",
+		"node.clean_prev_stop":            "上次干净停止",
+		"node.derived_counts":             "来自节点的派生计数",
+		"node.no_audit":                   "尚未摄入审计正文。edge 默认关闭审计上报；节点主动开启前，只会上报 status 心跳（只有计数，不含正文）。",
+		"node.no_descriptor":              "节点尚未上报能力描述（edge 默认关闭能力上报）。",
+		"node.policy_ceiling":             "策略上限",
+		"node.recent_audit":               "最近摄入审计",
+		"node.recent_audit_hint":          "显示 %d 条 · 最新在前",
+		"operators.create_operator":       "创建操作员",
+		"operators.initial_password":      "初始密码",
+		"operators.last_login":            "最近登录",
+		"operators.management":            "操作员管理",
+		"operators.no_operators":          "尚未配置操作员。",
+		"operators.reset_password":        "重置密码",
+		"operators.reset_password_action": "重置密码",
+		"operators.title":                 "操作员",
+		"page.account":                    "账户",
+		"page.create_operator":            "创建操作员",
+		"page.fleet":                      "车队",
+		"page.operators":                  "操作员",
+		"page.settings":                   "设置",
+		"page.sign_in":                    "登录",
+		"page.tokens":                     "令牌",
+		"settings.center_config":          "中心配置",
+		"settings.data_dir":               "数据目录",
+		"settings.dev_mode":               "开发模式",
+		"settings.login_protection":       "登录保护",
+		"settings.listen_address":         "监听地址",
+		"settings.login_lockout":          "登录锁定",
+		"settings.login_max_fails":        "登录失败上限",
+		"settings.login_window":           "登录窗口",
+		"settings.max_telemetry_body":     "遥测请求体上限",
+		"settings.off":                    "关闭",
+		"settings.on":                     "开启",
+		"settings.manage_accounts":        "管理仪表盘账户、资料和密码重置。",
+		"settings.read_only_env":          "只读 · 通过环境变量设置",
+		"settings.source_ip":              "按来源 IP",
+		"settings.stale_after":            "离线判定",
+		"settings.tls":                    "TLS",
+		"settings.tls_disabled":           "未启用",
+		"settings.tls_enabled":            "已启用",
+		"settings.tls_proxy":              "由反向代理终止",
+		"settings.token_inventory":        "跨 %d 个已知节点查看只读节点令牌清单。",
+		"settings.version":                "版本",
+		"tokens.authenticated":            "已使用",
+		"tokens.empty_body":               "设置 SCOOTSHIP_NODE_TOKENS_FILE 指向私有 JSON 文件，或用 SCOOTSHIP_NODE_TOKENS 做本地测试。没有已配置的令牌时，edge 无法鉴权。",
+		"tokens.empty_title":              "尚未配置节点令牌。",
+		"tokens.fingerprint":              "指纹",
+		"tokens.inventory":                "令牌清单",
+		"tokens.last_authenticated":       "最近鉴权",
+		"tokens.metadata":                 "这里只显示只读元数据。Bearer token secret 绝不显示、不会由 API 返回、不会写入日志或审计。",
+		"tokens.node_state":               "节点状态",
+		"tokens.not_reported":             "未上报",
+		"tokens.source":                   "来源",
+	},
+}

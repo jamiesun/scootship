@@ -1,38 +1,38 @@
 {{define "tokens"}}{{template "header" .}}
     <section class="page-head">
-      <h1>Tokens</h1>
+      <h1>{{t .Lang "page.tokens"}}</h1>
     </section>
 
     <section class="summary">
       <div class="stat">
         <span class="num">{{.Total}}</span>
-        <span class="lbl">tokens</span>
+        <span class="lbl">{{t .Lang "page.tokens"}}</span>
       </div>
       <div class="stat">
         <span class="num ok">{{.Authenticated}}</span>
-        <span class="lbl">used</span>
+        <span class="lbl">{{t .Lang "tokens.authenticated"}}</span>
       </div>
       <div class="stat">
         <span class="num">{{.KnownNodes}}</span>
-        <span class="lbl">known nodes</span>
+        <span class="lbl">{{t .Lang "fleet.known_nodes"}}</span>
       </div>
     </section>
 
     <section class="card">
-      <h3>Token Inventory</h3>
-      <p class="muted">Read-only metadata. Bearer token secrets are never displayed, returned by the API, logged, or written to audit.</p>
+      <h3>{{t .Lang "tokens.inventory"}}</h3>
+      <p class="muted">{{t .Lang "tokens.metadata"}}</p>
     </section>
 
     {{if .Rows}}
     <table class="tokens">
       <thead>
         <tr>
-          <th>node</th>
-          <th>source</th>
-          <th>fingerprint</th>
-          <th>node state</th>
-          <th>last authenticated</th>
-          <th>last seen</th>
+          <th>{{t .Lang "fleet.node"}}</th>
+          <th>{{t .Lang "tokens.source"}}</th>
+          <th>{{t .Lang "tokens.fingerprint"}}</th>
+          <th>{{t .Lang "tokens.node_state"}}</th>
+          <th>{{t .Lang "tokens.last_authenticated"}}</th>
+          <th>{{t .Lang "fleet.last_seen"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -41,7 +41,7 @@
           <td>{{if .KnownNode}}<a href="/nodes/{{.NodeID}}" class="node-link">{{.NodeID}}</a>{{else}}<span class="mono">{{.NodeID}}</span>{{end}}</td>
           <td><span class="tag source source-{{.Source}}">{{.Source}}</span></td>
           <td class="mono muted">{{.Fingerprint}}</td>
-          <td>{{if .KnownNode}}{{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}{{else}}<span class="pill muted-pill">not reported</span>{{end}}</td>
+          <td>{{if .KnownNode}}{{if .Online}}<span class="pill ok">{{t $.Lang "fleet.online"}}</span>{{else}}<span class="pill warn">{{t $.Lang "fleet.stale"}}</span>{{end}}{{else}}<span class="pill muted-pill">{{t $.Lang "tokens.not_reported"}}</span>{{end}}</td>
           <td class="muted">{{.LastAuthenticatedAgo}}</td>
           <td class="muted">{{.LastSeenAgo}}</td>
         </tr>
@@ -50,8 +50,8 @@
     </table>
     {{else}}
     <section class="empty">
-      <h2>No node tokens are configured.</h2>
-      <p>Set <code>SCOOTSHIP_NODE_TOKENS_FILE</code> to a private JSON file or <code>SCOOTSHIP_NODE_TOKENS</code> for local testing. Without a configured token, no edge can authenticate.</p>
+      <h2>{{t .Lang "tokens.empty_title"}}</h2>
+      <p>{{t .Lang "tokens.empty_body"}}</p>
     </section>
     {{end}}
 {{template "footer" .}}{{end}}

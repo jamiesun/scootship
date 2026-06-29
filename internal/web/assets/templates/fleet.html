@@ -1,20 +1,20 @@
 {{define "fleet"}}{{template "header" .}}
     <section class="page-head">
-      <h1>Fleet</h1>
+      <h1>{{t .Lang "page.fleet"}}</h1>
     </section>
 
     <section class="summary">
       <div class="stat">
         <span class="num">{{.Total}}</span>
-        <span class="lbl">nodes</span>
+        <span class="lbl">{{t .Lang "fleet.nodes"}}</span>
       </div>
       <div class="stat">
         <span class="num ok">{{.Online}}</span>
-        <span class="lbl">online</span>
+        <span class="lbl">{{t .Lang "fleet.online"}}</span>
       </div>
       <div class="stat">
         <span class="num {{if .Stale}}warn{{end}}">{{.Stale}}</span>
-        <span class="lbl">stale</span>
+        <span class="lbl">{{t .Lang "fleet.stale"}}</span>
       </div>
     </section>
 
@@ -22,16 +22,16 @@
     <table class="fleet">
       <thead>
         <tr>
-          <th>node</th>
-          <th>state</th>
-          <th>scoot</th>
-          <th>edge</th>
-          <th>ceiling</th>
-          <th>daemon</th>
-          <th class="num-col">runs</th>
-          <th class="num-col">denies</th>
-          <th class="num-col">audit</th>
-          <th>last seen</th>
+          <th>{{t .Lang "fleet.node"}}</th>
+          <th>{{t .Lang "fleet.state"}}</th>
+          <th>{{t .Lang "fleet.scoot"}}</th>
+          <th>{{t .Lang "fleet.edge"}}</th>
+          <th>{{t .Lang "fleet.ceiling"}}</th>
+          <th>{{t .Lang "fleet.daemon"}}</th>
+          <th class="num-col">{{t .Lang "fleet.runs"}}</th>
+          <th class="num-col">{{t .Lang "fleet.denies"}}</th>
+          <th class="num-col">{{t .Lang "fleet.audit"}}</th>
+          <th>{{t .Lang "fleet.last_seen"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -40,7 +40,7 @@
           <td><a href="/nodes/{{.NodeID}}" class="node-link">{{.NodeID}}</a>
             {{range .Labels}}<span class="tag">{{.}}</span>{{end}}
           </td>
-          <td>{{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}</td>
+          <td>{{if .Online}}<span class="pill ok">{{t $.Lang "fleet.online"}}</span>{{else}}<span class="pill warn">{{t $.Lang "fleet.stale"}}</span>{{end}}</td>
           <td>{{or .ScootVersion "—"}}</td>
           <td>{{or .EdgeVersion "—"}}</td>
           <td><span class="ceiling ceiling-{{.PolicyCeiling}}">{{or .PolicyCeiling "—"}}</span></td>
@@ -55,10 +55,8 @@
     </table>
     {{else}}
     <section class="empty">
-      <h2>No nodes have reported yet.</h2>
-      <p>The center is waiting for a <code>scoot-edge</code> to dial out and POST telemetry.
-         Until the real edge binary exists (it is E0 design-only today), drive the full
-         heartbeat → ingest → dashboard path with the built-in simulator:</p>
+      <h2>{{t .Lang "fleet.empty_title"}}</h2>
+      <p>{{t .Lang "fleet.empty_body"}}</p>
       <pre>scootship mock-edge -center http://localhost{{.Addr}} -node n-dev -token dev-token</pre>
     </section>
     {{end}}

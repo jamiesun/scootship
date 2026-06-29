@@ -1,27 +1,27 @@
 {{define "operator_new"}}{{template "header" .}}
-    <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <a href="/operators">operators</a> <span class="dot">/</span> <span>create</span></nav>
+    <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <a href="/operators">{{t .Lang "common.operators"}}</a> <span class="dot">/</span> <span>{{t .Lang "common.create"}}</span></nav>
 
     <section class="card">
-      <h3>Create Operator</h3>
+      <h3>{{t .Lang "operators.create_operator"}}</h3>
       {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
       {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
       <form class="grid-form" method="post" action="/operators">
-        <label>Username
+        <label>{{t .Lang "common.username"}}
           <input name="username" autocomplete="username" required>
         </label>
-        <label>Display name
+        <label>{{t .Lang "common.display_name"}}
           <input name="display_name" autocomplete="name">
         </label>
-        <label>Email
+        <label>{{t .Lang "common.email"}}
           <input name="email" type="email" autocomplete="email">
         </label>
-        <label>Initial password
+        <label>{{t .Lang "operators.initial_password"}}
           <input name="password" type="password" autocomplete="new-password" required>
         </label>
-        <label>Confirm password
+        <label>{{t .Lang "account.confirm_new_password"}}
           <input name="confirm_password" type="password" autocomplete="new-password" required>
         </label>
-        <button type="submit">Create</button>
+        <button type="submit">{{t .Lang "common.create"}}</button>
       </form>
     </section>
 {{template "footer" .}}{{end}}

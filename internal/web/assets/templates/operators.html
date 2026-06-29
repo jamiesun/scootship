@@ -1,19 +1,19 @@
 {{define "operators"}}{{template "header" .}}
-    <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>operators</span></nav>
+    <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <span>{{t .Lang "common.operators"}}</span></nav>
 
     <section class="summary">
       <div class="stat">
         <span class="num">{{len .Operators}}</span>
-        <span class="lbl">operators</span>
+        <span class="lbl">{{t .Lang "page.operators"}}</span>
       </div>
     </section>
 
     <section class="card">
-      <h3>Operator Management</h3>
+      <h3>{{t .Lang "operators.management"}}</h3>
       {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
       {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
       <div class="actions-row">
-        <a class="btn" href="/operators/new">Create operator</a>
+        <a class="btn" href="/operators/new">{{t .Lang "operators.create_operator"}}</a>
       </div>
     </section>
 
@@ -21,10 +21,10 @@
     <table class="operators">
       <thead>
         <tr>
-          <th>username</th>
-          <th>display name</th>
-          <th>email</th>
-          <th>last login</th>
+          <th>{{t .Lang "common.username"}}</th>
+          <th>{{t .Lang "common.display_name"}}</th>
+          <th>{{t .Lang "common.email"}}</th>
+          <th>{{t .Lang "operators.last_login"}}</th>
           <th></th>
         </tr>
       </thead>
@@ -35,12 +35,12 @@
           <td>{{or .DisplayName "—"}}</td>
           <td>{{or .Email "—"}}</td>
           <td class="muted">{{.LastLoginAgo}}</td>
-          <td class="num-col"><a href="/operators/{{.Username}}">edit</a></td>
+          <td class="num-col"><a href="/operators/{{.Username}}">{{t $.Lang "common.edit"}}</a></td>
         </tr>
         {{end}}
       </tbody>
     </table>
     {{else}}
-    <section class="empty"><h2>No operators configured.</h2></section>
+    <section class="empty"><h2>{{t .Lang "operators.no_operators"}}</h2></section>
     {{end}}
 {{template "footer" .}}{{end}}

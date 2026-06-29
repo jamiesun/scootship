@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/jamiesun/scootship/internal/operators"
-	"github.com/jamiesun/scootship/internal/version"
 )
 
 type formMessage struct {
@@ -51,56 +50,58 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "account", accountPage{
-		basePage: basePage{Title: "Account", Version: version.Version, User: user, Active: "account"},
+		basePage: s.base(r, user, "account", "page.account"),
 		Operator: op,
 	})
 }
 
 func (s *Server) handleAccountUpdate(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	if err := r.ParseForm(); err != nil {
-		s.renderAccountMessage(w, user, formMessage{Error: "Could not read the form."}, formMessage{})
+		s.renderAccountMessage(w, r, user, formMessage{Error: tr(lang, "form.read_failed")}, formMessage{})
 		return
 	}
 	err := s.operators.UpdateProfile(user, r.PostFormValue("display_name"), r.PostFormValue("email"), s.now())
 	if err != nil {
-		s.renderAccountMessage(w, user, formMessage{Error: "Could not update profile."}, formMessage{})
+		s.renderAccountMessage(w, r, user, formMessage{Error: tr(lang, "form.update_profile_failed")}, formMessage{})
 		return
 	}
-	s.renderAccountMessage(w, user, formMessage{OK: "Profile updated."}, formMessage{})
+	s.renderAccountMessage(w, r, user, formMessage{OK: tr(lang, "form.profile_updated")}, formMessage{})
 }
 
 func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	if err := r.ParseForm(); err != nil {
-		s.renderAccountMessage(w, user, formMessage{}, formMessage{Error: "Could not read the form."})
+		s.renderAccountMessage(w, r, user, formMessage{}, formMessage{Error: tr(lang, "form.read_failed")})
 		return
 	}
 	newPass := r.PostFormValue("new_password")
 	if newPass == "" || newPass != r.PostFormValue("confirm_password") {
-		s.renderAccountMessage(w, user, formMessage{}, formMessage{Error: "New passwords do not match."})
+		s.renderAccountMessage(w, r, user, formMessage{}, formMessage{Error: tr(lang, "form.new_password_mismatch")})
 		return
 	}
 	err := s.operators.ChangePassword(user, r.PostFormValue("current_password"), newPass, s.now())
 	if err != nil {
-		msg := "Could not change password."
+		msg := tr(lang, "form.change_password_failed")
 		if errors.Is(err, operators.ErrBadCredentials) {
-			msg = "Current password is incorrect."
+			msg = tr(lang, "form.current_password_incorrect")
 		}
-		s.renderAccountMessage(w, user, formMessage{}, formMessage{Error: msg})
+		s.renderAccountMessage(w, r, user, formMessage{}, formMessage{Error: msg})
 		return
 	}
-	s.renderAccountMessage(w, user, formMessage{}, formMessage{OK: "Password changed."})
+	s.renderAccountMessage(w, r, user, formMessage{}, formMessage{OK: tr(lang, "form.password_changed")})
 }
 
-func (s *Server) renderAccountMessage(w http.ResponseWriter, username string, profile, password formMessage) {
+func (s *Server) renderAccountMessage(w http.ResponseWriter, r *http.Request, username string, profile, password formMessage) {
 	op, ok := s.operators.Get(username)
 	if !ok {
 		writeJSONError(w, http.StatusUnauthorized, "operator_missing", "current operator no longer exists")
 		return
 	}
 	s.render(w, "account", accountPage{
-		basePage: basePage{Title: "Account", Version: version.Version, User: username, Active: "account"},
+		basePage: s.base(r, username, "account", "page.account"),
 		Operator: op,
 		Profile:  profile,
 		Password: password,
@@ -110,66 +111,67 @@ func (s *Server) renderAccountMessage(w http.ResponseWriter, username string, pr
 func (s *Server) handleOperators(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
 	s.render(w, "operators", operatorsPage{
-		basePage:  basePage{Title: "Operators", Version: version.Version, User: user, Active: "operators"},
-		Operators: s.operatorRows(),
+		basePage:  s.base(r, user, "operators", "page.operators"),
+		Operators: s.operatorRows(requestLang(r)),
 	})
 }
 
 func (s *Server) handleOperatorCreatePage(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
 	s.render(w, "operator_new", operatorCreatePage{
-		basePage: basePage{Title: "Create operator", Version: version.Version, User: user, Active: "operators"},
+		basePage: s.base(r, user, "operators", "page.create_operator"),
 	})
 }
 
 func (s *Server) handleOperatorCreate(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	if err := r.ParseForm(); err != nil {
-		s.renderOperatorCreateMessage(w, user, formMessage{Error: "Could not read the form."})
+		s.renderOperatorCreateMessage(w, r, user, formMessage{Error: tr(lang, "form.read_failed")})
 		return
 	}
 	password := r.PostFormValue("password")
 	if password == "" || password != r.PostFormValue("confirm_password") {
-		s.renderOperatorCreateMessage(w, user, formMessage{Error: "Passwords do not match."})
+		s.renderOperatorCreateMessage(w, r, user, formMessage{Error: tr(lang, "form.password_mismatch")})
 		return
 	}
 	err := s.operators.Create(r.PostFormValue("username"), r.PostFormValue("display_name"), r.PostFormValue("email"), password, s.now())
 	if err != nil {
-		msg := "Could not create operator."
+		msg := tr(lang, "form.create_operator_failed")
 		if errors.Is(err, operators.ErrDuplicate) {
-			msg = "Operator already exists."
+			msg = tr(lang, "form.operator_duplicate")
 		}
 		if errors.Is(err, operators.ErrInvalid) {
-			msg = "Username and password are required."
+			msg = tr(lang, "form.operator_invalid")
 		}
-		s.renderOperatorCreateMessage(w, user, formMessage{Error: msg})
+		s.renderOperatorCreateMessage(w, r, user, formMessage{Error: msg})
 		return
 	}
-	s.renderOperatorsMessage(w, user, formMessage{OK: "Operator created."})
+	s.renderOperatorsMessage(w, r, user, formMessage{OK: tr(lang, "form.operator_created")})
 }
 
-func (s *Server) renderOperatorsMessage(w http.ResponseWriter, username string, create formMessage) {
+func (s *Server) renderOperatorsMessage(w http.ResponseWriter, r *http.Request, username string, create formMessage) {
 	s.render(w, "operators", operatorsPage{
-		basePage:  basePage{Title: "Operators", Version: version.Version, User: username, Active: "operators"},
-		Operators: s.operatorRows(),
+		basePage:  s.base(r, username, "operators", "page.operators"),
+		Operators: s.operatorRows(requestLang(r)),
 		Create:    create,
 	})
 }
 
-func (s *Server) renderOperatorCreateMessage(w http.ResponseWriter, username string, create formMessage) {
+func (s *Server) renderOperatorCreateMessage(w http.ResponseWriter, r *http.Request, username string, create formMessage) {
 	s.render(w, "operator_new", operatorCreatePage{
-		basePage: basePage{Title: "Create operator", Version: version.Version, User: username, Active: "operators"},
+		basePage: s.base(r, username, "operators", "page.create_operator"),
 		Create:   create,
 	})
 }
 
-func (s *Server) operatorRows() []operatorRow {
+func (s *Server) operatorRows(lang string) []operatorRow {
 	snaps := s.operators.List()
 	rows := make([]operatorRow, 0, len(snaps))
 	for _, snap := range snaps {
-		row := operatorRow{Snapshot: snap, LastLoginAgo: "never"}
+		row := operatorRow{Snapshot: snap, LastLoginAgo: tr(lang, "common.never")}
 		if snap.LastLoginMS != 0 {
-			row.LastLoginAgo = s.ago(snap.LastLoginMS)
+			row.LastLoginAgo = s.agoLang(lang, snap.LastLoginMS)
 		}
 		rows = append(rows, row)
 	}
@@ -184,48 +186,51 @@ func (s *Server) handleOperatorEdit(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not_found", "unknown operator")
 		return
 	}
+	lang := requestLang(r)
 	s.render(w, "operator_edit", operatorEditPage{
-		basePage: basePage{Title: "Operator " + op.Username, Version: version.Version, User: user, Active: "operators"},
+		basePage: s.baseTitle(r, user, "operators", tr(lang, "operators.title")+" "+op.Username),
 		Operator: op,
 	})
 }
 
 func (s *Server) handleOperatorUpdate(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	username := r.PathValue("username")
 	if err := r.ParseForm(); err != nil {
-		s.renderOperatorEditMessage(w, user, username, formMessage{Error: "Could not read the form."}, formMessage{})
+		s.renderOperatorEditMessage(w, r, user, username, formMessage{Error: tr(lang, "form.read_failed")}, formMessage{})
 		return
 	}
 	action := r.PostFormValue("action")
 	if action == "password" {
 		newPass := r.PostFormValue("new_password")
 		if newPass == "" || newPass != r.PostFormValue("confirm_password") {
-			s.renderOperatorEditMessage(w, user, username, formMessage{}, formMessage{Error: "Passwords do not match."})
+			s.renderOperatorEditMessage(w, r, user, username, formMessage{}, formMessage{Error: tr(lang, "form.password_mismatch")})
 			return
 		}
 		if err := s.operators.SetPassword(username, newPass, s.now()); err != nil {
-			s.renderOperatorEditMessage(w, user, username, formMessage{}, formMessage{Error: "Could not reset password."})
+			s.renderOperatorEditMessage(w, r, user, username, formMessage{}, formMessage{Error: tr(lang, "form.reset_password_failed")})
 			return
 		}
-		s.renderOperatorEditMessage(w, user, username, formMessage{}, formMessage{OK: "Password reset."})
+		s.renderOperatorEditMessage(w, r, user, username, formMessage{}, formMessage{OK: tr(lang, "form.password_reset")})
 		return
 	}
 	if err := s.operators.UpdateProfile(username, r.PostFormValue("display_name"), r.PostFormValue("email"), s.now()); err != nil {
-		s.renderOperatorEditMessage(w, user, username, formMessage{Error: "Could not update profile."}, formMessage{})
+		s.renderOperatorEditMessage(w, r, user, username, formMessage{Error: tr(lang, "form.update_profile_failed")}, formMessage{})
 		return
 	}
-	s.renderOperatorEditMessage(w, user, username, formMessage{OK: "Profile updated."}, formMessage{})
+	s.renderOperatorEditMessage(w, r, user, username, formMessage{OK: tr(lang, "form.profile_updated")}, formMessage{})
 }
 
-func (s *Server) renderOperatorEditMessage(w http.ResponseWriter, currentUser, username string, profile, password formMessage) {
+func (s *Server) renderOperatorEditMessage(w http.ResponseWriter, r *http.Request, currentUser, username string, profile, password formMessage) {
 	op, ok := s.operators.Get(username)
 	if !ok {
 		writeJSONError(w, http.StatusNotFound, "not_found", "unknown operator")
 		return
 	}
+	lang := requestLang(r)
 	s.render(w, "operator_edit", operatorEditPage{
-		basePage: basePage{Title: "Operator " + op.Username, Version: version.Version, User: currentUser, Active: "operators"},
+		basePage: s.baseTitle(r, currentUser, "operators", tr(lang, "operators.title")+" "+op.Username),
 		Operator: op,
 		Profile:  profile,
 		Password: password,

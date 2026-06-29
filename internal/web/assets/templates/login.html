@@ -1,5 +1,5 @@
 {{define "login"}}<!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,29 +7,34 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-body">
-  <div class="login-card">
-    <div class="login-brand"><span class="brand-mark">⌁</span> scootship</div>
-    <p class="login-sub">scoot fleet center · sign in</p>
+    <div class="login-card">
+      <div class="login-brand"><span class="brand-mark">⌁</span> scootship</div>
+    <p class="login-sub">{{t .Lang "login.sub"}}</p>
+    <nav class="login-lang lang-switch" aria-label="{{t .Lang "layout.language"}}">
+      <a class="{{if eq .Lang "en"}}active{{end}}" href="{{langURL .CurrentPath "en"}}">EN</a>
+      <span>/</span>
+      <a class="{{if eq .Lang "zh"}}active{{end}}" href="{{langURL .CurrentPath "zh"}}">中文</a>
+    </nav>
 
     {{if .Error}}<div class="login-error">{{.Error}}</div>{{end}}
-    {{if not .Configured}}<div class="login-warn">Dashboard auth is not configured. Set <code>SCOOTSHIP_ADMIN_PASSWORD</code> on the server.</div>{{end}}
+    {{if not .Configured}}<div class="login-warn">{{t .Lang "login.auth_not_configured"}}</div>{{end}}
 
     <form method="post" action="/login" autocomplete="on">
       <input type="hidden" name="next" value="{{.Next}}">
-      <label>Username
+      <label>{{t .Lang "login.username"}}
         <input name="user" autocomplete="username" autofocus required>
       </label>
-      <label>Password
+      <label>{{t .Lang "login.password"}}
         <input name="password" type="password" autocomplete="current-password" required>
       </label>
       <label class="check-row">
         <input name="remember" type="checkbox" value="1">
-        <span>Remember this device for 30 days</span>
+        <span>{{t .Lang "login.remember"}}</span>
       </label>
-      <button type="submit">Sign in</button>
+      <button type="submit">{{t .Lang "login.sign_in"}}</button>
     </form>
 
-    {{if .DevHint}}<p class="login-dev">dev mode default: <code>admin</code> / <code>admin</code></p>{{end}}
+    {{if .DevHint}}<p class="login-dev">{{t .Lang "login.dev_hint"}} <code>admin</code> / <code>admin</code></p>{{end}}
   </div>
   <div class="login-foot">scootship {{.Version}}</div>
 </body>
