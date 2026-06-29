@@ -82,6 +82,13 @@ func TestIngestAuditIsIdempotent(t *testing.T) {
 	if got := m.AuditEvents("n-1", 0); len(got) != 2 {
 		t.Fatalf("expected 2 stored events, got %d", len(got))
 	}
+	node, ok := m.Node("n-1")
+	if !ok {
+		t.Fatal("node not registered")
+	}
+	if node.AuditLifecycle.DuplicateReports != 1 || node.AuditLifecycle.LastDuplicateMS != 3001 {
+		t.Fatalf("duplicate audit report not visible: %+v", node.AuditLifecycle)
+	}
 
 	// A newer range advances.
 	next := protocol.AuditBatchBody{

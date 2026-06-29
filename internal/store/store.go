@@ -37,6 +37,8 @@ type AuditLifecycle struct {
 	DroppedEvents     int    `json:"dropped_events"`
 	OldestRetainedSeq uint64 `json:"oldest_retained_seq"`
 	NewestRetainedSeq uint64 `json:"newest_retained_seq"`
+	DuplicateReports  int    `json:"duplicate_reports"`
+	LastDuplicateMS   int64  `json:"last_duplicate_ms,omitempty"`
 	LastGapRecvMS     int64  `json:"last_gap_recv_ms,omitempty"`
 	LastGapKind       string `json:"last_gap_kind,omitempty"`
 	LastGapReason     string `json:"last_gap_reason,omitempty"`

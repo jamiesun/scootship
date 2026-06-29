@@ -270,6 +270,93 @@ func TestDashboardRunAuditTimelineVisible(t *testing.T) {
 	}
 }
 
+func TestDashboardReadOnlyHealthSignalsVisible(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	status := protocol.StatusBody{
+		ScootVersion:  "2.0.0",
+		EdgeVersion:   "0.2.0",
+		PolicyCeiling: "unrestricted",
+		Daemon:        protocol.DaemonStatus{State: "running"},
+		AuditStats:    protocol.AuditStats{Run: 5, PolicyDeny: 1, SystemError: 1},
+	}
+	if err := st.UpsertStatus("n-1", now, now, status); err != nil {
+		t.Fatal(err)
+	}
+	baseline := protocol.StatusBody{ScootVersion: "1.0.0", EdgeVersion: "0.2.0", PolicyCeiling: "readonly"}
+	if err := st.UpsertStatus("n-2", now-180_000, now-180_000, baseline); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertStatus("n-3", now, now, baseline); err != nil {
+		t.Fatal(err)
+	}
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 100, SeqTo: 1},
+		Events: []protocol.AuditEvent{{Seq: 0, TS: 1, Kind: "run", Msg: "start"}},
+	}
+	if _, _, err := st.IngestAudit("n-1", now+1, batch); err != nil {
+		t.Fatal(err)
+	}
+	if _, n, err := st.IngestAudit("n-1", now+2, batch); err != nil || n != 0 {
+		t.Fatalf("duplicate ingest stored=%d err=%v", n, err)
+	}
+
+	client := loginClient(t, ts.URL)
+	api := getJSON(t, client, ts.URL+"/api/nodes/n-1")
+	signals, ok := api["health"].([]any)
+	if !ok {
+		t.Fatalf("health missing from API: %v", api)
+	}
+	codes := map[string]bool{}
+	for _, item := range signals {
+		sig, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("bad health signal shape: %v", item)
+		}
+		codes[sig["code"].(string)] = true
+	}
+	for _, want := range []string{"scoot_version_drift", "unrestricted_ceiling", "policy_deny", "system_error", "duplicate_audit_report", "audit_body_lag"} {
+		if !codes[want] {
+			t.Fatalf("missing health code %q in %v", want, codes)
+		}
+	}
+
+	resp, err := client.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fleet, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	fleetText := string(fleet)
+	if !strings.Contains(fleetText, "Health Signals") || !strings.Contains(fleetText, "warn") {
+		t.Fatalf("fleet page missing health signal summary: %s", fleetText)
+	}
+
+	resp, err = client.Get(ts.URL + "/nodes/n-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	pageText := string(page)
+	for _, want := range []string{"Health Signals", "Scoot version drift", "Duplicate audit report", "Audit body lag"} {
+		if !strings.Contains(pageText, want) {
+			t.Fatalf("node page missing health text %q: %s", want, pageText)
+		}
+	}
+
+	resp, err = client.Get(ts.URL + "/nodes/n-1?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zhPage, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	zhText := string(zhPage)
+	if !strings.Contains(zhText, "健康信号") || !strings.Contains(zhText, "Scoot 版本漂移") {
+		t.Fatalf("node page missing Chinese health signals: %s", zhText)
+	}
+}
+
 func TestTelemetryAuth(t *testing.T) {
 	ts, _ := newTestServer(t)
 	status := protocol.StatusBody{ScootVersion: "0.9.0"}

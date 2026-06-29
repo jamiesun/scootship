@@ -16,6 +16,10 @@
         <span class="num {{if .Stale}}warn{{end}}">{{.Stale}}</span>
         <span class="lbl">{{t .Lang "fleet.stale"}}</span>
       </div>
+      <div class="stat">
+        <span class="num {{if .Health}}warn{{end}}">{{.Health}}</span>
+        <span class="lbl">{{t .Lang "health.signals"}}</span>
+      </div>
     </section>
 
     {{if .Nodes}}
@@ -31,6 +35,7 @@
           <th class="num-col">{{t .Lang "fleet.runs"}}</th>
           <th class="num-col">{{t .Lang "fleet.denies"}}</th>
           <th class="num-col">{{t .Lang "fleet.audit"}}</th>
+          <th>{{t .Lang "health.signals"}}</th>
           <th>{{t .Lang "fleet.last_seen"}}</th>
         </tr>
       </thead>
@@ -48,6 +53,7 @@
           <td class="num-col">{{.AuditRun}}</td>
           <td class="num-col {{if .AuditPolicyDeny}}warn{{end}}">{{.AuditPolicyDeny}}</td>
           <td class="num-col">{{.AuditStored}}</td>
+          <td>{{if .HealthSignals}}<span class="pill health-{{.HealthLevel}}">{{.HealthSummary}}</span>{{else}}<span class="pill ok">{{t $.Lang "health.ok"}}</span>{{end}}</td>
           <td class="muted">{{.LastSeenAgo}}</td>
         </tr>
         {{end}}
