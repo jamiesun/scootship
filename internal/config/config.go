@@ -1,7 +1,7 @@
 // Package config loads the center's runtime configuration from the environment.
 //
-// Secrets (node tokens, dashboard password) come from the environment or a 0600
-// file, never from committed config and never compiled into the binary.
+// Secrets (node tokens, dashboard password) come from the environment or a
+// private file, never from committed config and never compiled into the binary.
 package config
 
 import (
@@ -15,11 +15,12 @@ import (
 // Config is the resolved center configuration.
 type Config struct {
 	Addr             string // listen address, e.g. ":8080"
-	TLSCert          string // PEM cert path; empty serves plain HTTP (dev only)
+	TLSCert          string // PEM cert path; with TLSKey enables HTTPS
 	TLSKey           string // PEM key path
+	BehindTLSProxy   bool   // explicitly allow plain HTTP listener behind trusted TLS termination
 	DataDir          string // append-only store directory
-	AdminUser        string // dashboard login user
-	AdminPassword    string // dashboard login password
+	AdminUser        string // first dashboard operator username when the operator store is empty
+	AdminPassword    string // first dashboard operator password when the operator store is empty
 	NodeTokensFile   string // JSON node_id->token file
 	NodeTokensInline string // "node=token,node2=token2"
 	Dev              bool   // dev conveniences (seed a demo node token + default login)
@@ -43,6 +44,7 @@ func FromEnv(getenv func(string) string) Config {
 		Addr:             def(getenv("SCOOTSHIP_ADDR"), ":8080"),
 		TLSCert:          getenv("SCOOTSHIP_TLS_CERT"),
 		TLSKey:           getenv("SCOOTSHIP_TLS_KEY"),
+		BehindTLSProxy:   truthy(getenv("SCOOTSHIP_BEHIND_TLS_PROXY")),
 		DataDir:          def(getenv("SCOOTSHIP_DATA_DIR"), "./data"),
 		AdminUser:        def(getenv("SCOOTSHIP_ADMIN_USER"), "admin"),
 		AdminPassword:    getenv("SCOOTSHIP_ADMIN_PASSWORD"),

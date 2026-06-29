@@ -1,0 +1,50 @@
+{{define "operators"}}{{template "header" .}}
+<nav class="crumbs">
+    <a href="/">fleet</a> <span class="dot">/</span> <span>operators</span>
+</nav>
+
+<section class="summary">
+    <div class="stat">
+        <span class="num">{{len .Operators}}</span>
+        <span class="lbl">operators</span>
+    </div>
+</section>
+
+<section class="card">
+    <h3>operator management</h3>
+    {{if .Create.OK}}
+    <div class="form-ok">{{.Create.OK}}</div>
+    {{end}} {{if .Create.Error}}
+    <div class="form-error">{{.Create.Error}}</div>
+    {{end}}
+    <div class="actions-row">
+        <a class="btn" href="/operators/new">Create operator</a>
+    </div>
+</section>
+
+{{if .Operators}}
+<table class="operators">
+    <thead>
+        <tr>
+            <th>username</th>
+            <th>display name</th>
+            <th>email</th>
+            <th>last login</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Operators}}
+        <tr>
+            <td class="mono">{{.Username}}</td>
+            <td>{{or .DisplayName "—"}}</td>
+            <td>{{or .Email "—"}}</td>
+            <td class="muted">{{.LastLoginAgo}}</td>
+            <td class="num-col"><a href="/operators/{{.Username}}">edit</a></td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}
+<section class="empty"><h2>No operators configured.</h2></section>
+{{end}} {{template "footer" .}}{{end}}

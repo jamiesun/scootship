@@ -2,7 +2,6 @@ package center
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -29,7 +28,7 @@ func (s *Server) requireNode(next http.Handler) http.Handler {
 			writeJSONError(w, http.StatusUnauthorized, "no_token", "missing Authorization: Bearer <token>")
 			return
 		}
-		node, ok := s.tokens.NodeFor(tok)
+		node, ok := s.tokens.NodeForAt(tok, s.now())
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "bad_token", "unrecognized node token")
 			return
@@ -63,9 +62,9 @@ func nodeFromCtx(r *http.Request) string {
 // accidentally world-readable); dev mode seeds a default password instead.
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.AdminPassword == "" {
+		if !s.operators.Configured() {
 			writeJSONError(w, http.StatusServiceUnavailable, "dashboard_locked",
-				"dashboard auth is not configured: set SCOOTSHIP_ADMIN_PASSWORD (or SCOOTSHIP_DEV=1 for local use)")
+				"dashboard auth is not configured: set SCOOTSHIP_ADMIN_PASSWORD to bootstrap the first operator (or SCOOTSHIP_DEV=1 for local use)")
 			return
 		}
 		if _, ok := s.currentUser(r); !ok {
@@ -107,7 +106,7 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.AdminPassword == "" {
+	if !s.operators.Configured() {
 		s.renderLogin(w, "/", "Dashboard auth is not configured on the server.")
 		return
 	}
@@ -120,6 +119,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	user := r.PostFormValue("user")
 	pass := r.PostFormValue("password")
 	next := safeNext(r.PostFormValue("next"))
+	remember := r.PostFormValue("remember") == "1"
 
 	// Brute-force throttle: refuse a locked-out source IP before touching
 	// credentials, so a guesser cannot keep trying during the lockout.
@@ -129,8 +129,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Constant-time compare; never log the password.
-	if !constantEq(user, s.cfg.AdminUser) || !constantEq(pass, s.cfg.AdminPassword) {
+	operator, ok := s.operators.Authenticate(user, pass, now)
+	if !ok {
 		d := s.loginGuard.Fail(ip, now)
 		if !d.Allowed {
 			s.log.Warn("dashboard login locked out", "ip", ip, "retry_after_s", int(d.RetryAfter.Seconds()))
@@ -144,7 +144,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.loginGuard.Reset(ip)
-	token, exp, err := s.sessions.create(user)
+	ttl := sessionTTL
+	if remember {
+		ttl = rememberSessionTTL
+	}
+	token, exp, err := s.sessions.create(operator.Username, ttl)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "session_error", "could not create session")
 		return
@@ -185,7 +189,7 @@ func (s *Server) renderLoginStatus(w http.ResponseWriter, status int, next, errM
 		Version:    version.Version,
 		Next:       next,
 		Error:      errMsg,
-		Configured: s.cfg.AdminPassword != "",
+		Configured: s.operators.Configured(),
 		DevHint:    s.cfg.Dev,
 	})
 }
@@ -220,10 +224,6 @@ func safeNext(p string) string {
 		return "/"
 	}
 	return p
-}
-
-func constantEq(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // --- shared JSON helpers ---

@@ -31,13 +31,16 @@ func newSessionStore(ttl time.Duration) *sessionStore {
 }
 
 // create mints a cryptographically random session token for user.
-func (s *sessionStore) create(user string) (string, time.Time, error) {
+func (s *sessionStore) create(user string, ttl time.Duration) (string, time.Time, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", time.Time{}, err
 	}
 	token := hex.EncodeToString(buf)
-	exp := time.Now().Add(s.ttl)
+	if ttl <= 0 {
+		ttl = s.ttl
+	}
+	exp := time.Now().Add(ttl)
 	s.mu.Lock()
 	s.sessions[token] = session{user: user, expires: exp}
 	s.mu.Unlock()

@@ -19,6 +19,15 @@
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span class="nav-label">Fleet</span>
       </a>
+      <a class="nav-item {{if eq .Active "tokens"}}active{{end}}" href="/tokens" title="Token inventory">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-3-3L21 2z"/><path d="M15 7l2 2"/></svg>
+        <span class="nav-label">Tokens</span>
+      </a>
+      <a class="nav-item {{if eq .Active "operators"}}active{{end}}" href="/operators" title="Operators">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Operators</span>
+      </a>
+
       <span class="nav-item disabled" title="Dispatch / orchestration is EDGE.md E2 — not built in phase 1">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         <span class="nav-label">Dispatch</span>
@@ -30,16 +39,17 @@
       </a>
     </nav>
     <div class="side-bottom">
-      <div class="who" title="{{or .User "signed in"}}">
-        <span class="avatar">{{initial .User}}</span>
-        <span class="nav-label who-name">{{or .User "—"}}</span>
-      </div>
-      <form method="post" action="/logout">
-        <button class="logout" type="submit" title="Sign out">
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          <span class="nav-label">Sign out</span>
-        </button>
-      </form>
+      <details class="settings-menu {{if or (eq .Active "settings") (eq .Active "operators")}}active{{end}}">
+        <summary class="who who-toggle" title="Settings">
+          <span class="avatar">{{initial .User}}</span>
+          <span class="nav-label who-name">Settings</span>
+          <svg class="ic caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="settings-pop">
+          <a class="settings-item {{if eq .Active "operators"}}active{{end}}" href="/operators">Settings</a>
+          <a class="settings-item {{if eq .Active "settings"}}active{{end}}" href="/account">Account</a>
+        </div>
+      </details>
     </div>
   </aside>
 
@@ -51,6 +61,12 @@
       <span class="tagline">scoot fleet center · phase&nbsp;1 · observation</span>
       <span class="spacer"></span>
       <label class="auto"><input type="checkbox" id="autorefresh" checked> auto-refresh</label>
+      <form class="topbar-logout" method="post" action="/logout">
+        <button class="logout logout-top" type="submit" title="Sign out">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Sign out</span>
+        </button>
+      </form>
     </header>
     <main>
 {{end}}

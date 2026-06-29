@@ -49,6 +49,26 @@ type nodePage struct {
 	Audits      []store.StoredAudit
 }
 
+type tokenRow struct {
+	NodeID               string `json:"node_id"`
+	Source               string `json:"source"`
+	Fingerprint          string `json:"fingerprint"`
+	Configured           bool   `json:"configured"`
+	KnownNode            bool   `json:"known_node"`
+	Online               bool   `json:"online"`
+	LastAuthenticatedMS  int64  `json:"last_authenticated_ms,omitempty"`
+	LastAuthenticatedAgo string `json:"last_authenticated_ago"`
+	LastSeenAgo          string `json:"last_seen_ago"`
+}
+
+type tokensPage struct {
+	basePage
+	Total         int
+	Authenticated int
+	KnownNodes    int
+	Rows          []tokenRow
+}
+
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
 	nodes := s.store.Nodes()
@@ -122,6 +142,62 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 		"node":   n,
 		"audits": s.store.AuditEvents(id, 100),
 	})
+}
+
+func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
+	user, _ := s.currentUser(r)
+	rows := s.tokenRows()
+	page := tokensPage{
+		basePage: basePage{Title: "Tokens", Version: version.Version, User: user, Active: "tokens"},
+		Total:    len(rows),
+		Rows:     rows,
+	}
+	for _, row := range rows {
+		if row.LastAuthenticatedMS != 0 {
+			page.Authenticated++
+		}
+		if row.KnownNode {
+			page.KnownNodes++
+		}
+	}
+	s.render(w, "tokens", page)
+}
+
+func (s *Server) handleAPITokens(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"now_ms": s.now().UnixMilli(),
+		"tokens": s.tokenRows(),
+	})
+}
+
+func (s *Server) tokenRows() []tokenRow {
+	nodes := map[string]store.NodeView{}
+	for _, n := range s.store.Nodes() {
+		nodes[n.NodeID] = n
+	}
+	snaps := s.tokens.Snapshots()
+	rows := make([]tokenRow, 0, len(snaps))
+	for _, snap := range snaps {
+		row := tokenRow{
+			NodeID:               snap.NodeID,
+			Source:               snap.Source,
+			Fingerprint:          snap.Fingerprint,
+			Configured:           true,
+			LastAuthenticatedMS:  snap.LastAuthenticatedMS,
+			LastAuthenticatedAgo: "never",
+			LastSeenAgo:          "never",
+		}
+		if snap.LastAuthenticatedMS != 0 {
+			row.LastAuthenticatedAgo = s.ago(snap.LastAuthenticatedMS)
+		}
+		if n, ok := nodes[snap.NodeID]; ok {
+			row.KnownNode = true
+			row.Online = s.online(n.LastSeenMS)
+			row.LastSeenAgo = s.ago(n.LastSeenMS)
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // --- view helpers ---

@@ -107,6 +107,10 @@ Once done, Scootship should look like this:
   and HTTP response bodies — once enabled, the center becomes a sink for potentially sensitive
   observation data. The center must do its own login authentication and action authorization for
   dashboard access, and have a retention / cleanup policy for stored audit data.
+- **Operational trust comes before remote orchestration.** The center should not grow into E2 job
+  dispatch until E1 is credible in production: production/dev transport boundaries are explicit,
+  deployment and recovery are documented, audit lifecycle and gaps are visible, node auth can be
+  governed, and health signals are clear on the dashboard.
 
 Priorities when qualities conflict (highest to lowest):
 
@@ -118,7 +122,9 @@ Priorities when qualities conflict (highest to lowest):
    drop data.
 3. **Simple delivery and operations** — a single binary, embedded assets, and simple storage beat
    architectural flourish.
-4. **Feature breadth** — orchestration, alerting, a rich audit UI, etc. all rank below the above.
+4. **Operational maturity** — production-safe defaults, deployment clarity, audit lifecycle, token
+   governance, and health signals outrank new power surfaces.
+5. **Feature breadth** — orchestration, alerting, a rich audit UI, etc. all rank below the above.
 
 ## Current capabilities
 
@@ -132,16 +138,21 @@ tested:
   `audit_batch`; de-duplicates on the `{file_gen, byte_to}` idempotency cursor, stores append-only,
   and replays on startup (`internal/center`, `internal/store`).
 - **Node registry and token auth.** Per-node bearer-token auth; a token may only ever speak for its
-  own `node_id` (`internal/tokens`, `internal/center`).
-- **Observation dashboard.** An embedded admin dashboard (fleet overview, node detail, collapsible
-  left sidebar), compiled into the single binary via `embed.FS` (`internal/web`, `internal/center`).
-- **Dashboard login and brute-force defense.** Form login + HttpOnly cookie session; failed logins
-  are throttled and locked out per source IP on a sliding window, backed by strict security
-  response headers (`internal/center`, `internal/loginguard`).
+  own `node_id`; the dashboard exposes read-only token inventory metadata (source, fingerprint,
+  last authentication) without displaying bearer secrets (`internal/tokens`, `internal/center`).
+- **Observation dashboard.** An embedded admin dashboard (fleet overview, node detail, token
+  inventory, collapsible left sidebar), compiled into the single binary via `embed.FS`
+  (`internal/web`, `internal/center`).
+- **Dashboard login and operator governance.** Form login + HttpOnly cookie session, optional
+  "remember this device" long-lived session (never password storage), multi-operator management,
+  profile/password updates, and per-source-IP failed-login lockout backed by strict security
+  response headers (`internal/center`, `internal/operators`, `internal/loginguard`).
 - **Mock edge harness.** Simulates heartbeats and audit shipping without a real `scoot-edge`,
   exercising the end-to-end path (`internal/mockedge`, `cmd/scootship mock-edge`).
 - **CLI and configuration.** `scootship serve | mock-edge | version`, all configured via
-  `SCOOTSHIP_*` environment variables (`cmd/scootship`, `internal/config`).
+  `SCOOTSHIP_*` environment variables; production plain HTTP fails closed unless direct TLS,
+  explicit dev mode, or explicit trusted TLS-proxy mode is configured (`cmd/scootship`,
+  `internal/config`).
 
 Phase 2 (task orchestration and dispatch) is not implemented yet: `GET /jobs/lease` is an
 observation-period stub today — it authenticates per the contract but dispatches no jobs.
@@ -214,10 +225,42 @@ tightly defended inbound surface".
   window** to resist brute force (the source IP trusts `X-Forwarded-For` only when a trusted proxy
   is configured), backed by strict security response headers (CSP, `X-Frame-Options`, etc.).
 
+### Phase 1.5 · E1 operational maturity package
+
+Serves the portraits "the center is a tightly defended inbound surface", "audit is replayable", and
+"data sensitivity is taken seriously". This is the preferred next direction before E2 expands the
+center's authority.
+
+- **Production/dev transport boundary.** Production mode is fail-closed for insecure transport unless
+  an explicitly named development mode is selected; local integration remains possible through a
+  clear dev-only path such as trusted local HTTP or a one-command self-signed HTTPS setup.
+- **Deployment and recovery clarity.** Operators can understand and reproduce safe deployments:
+  direct TLS versus trusted reverse proxy, private data-directory ownership and permissions, node
+  token file permissions, and backup / restore expectations for append-only telemetry and operator
+  state.
+- **Bounded edge endpoints with visible failure modes.** `/telemetry` and `/jobs/lease` have clear
+  route-level expectations for timeouts, request-body limits (including bodyless lease requests),
+  authentication failures, idempotency errors, and operator-visible error / health signals.
+- **Real-edge integration path.** Since real `scoot-edge` clients may require `https://`, Scootship's
+  dev story must make local center/edge integration explicit without weakening production defaults.
+- **Audit lifecycle and gap visibility.** Sensitive audit bodies have retention, cleanup, capacity,
+  and explicit `audit_gap` behavior that operators can reason about before storing large real fleets.
+- **Run audit timeline.** The dashboard can organize ingested audit by `session_id`, `run_id`, `seq`,
+  and `ts`, so an operator can answer "what did this agent run actually do?" without reading raw
+  JSONL.
+- **Token governance as node authentication, not node policy.** Token inventory matures toward clear
+  create / rotate / revoke flows and recent-authentication visibility, while never implying authority
+  to change a node's local `policy_ceiling`.
+- **Read-only health signals.** Node offline state, version drift, `policy_deny` spikes, audit stalls,
+  and suspicious duplicate-reporting patterns become dashboard-visible signals before any notification
+  or remediation system is added.
+
 ### Phase 2 · Task orchestration and dispatch (aligned with scoot-edge E2)
 
 Serves the portrait "dispatch is traceable" and the hard rules "the center does not raise the local
-ceiling / does not execute raw commands".
+ceiling / does not execute raw commands". This phase is deliberately gated: keep `/jobs/lease` as an
+authenticated empty-dispatch stub until the E1 operational maturity package is credible and the Scoot
+side has landed the corresponding unattended readonly clamp.
 
 - **Long-poll-based job dispatch.** Implement the center-side semantics of
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
@@ -231,19 +274,22 @@ ceiling / does not execute raw commands".
   ceiling".
 - **Dispatch-provenance audit.** The center records the full story of each dispatch and joins it
   back to the ingested Scoot run audit via `session_id`, forming an end-to-end traceable chain.
+- **E2 prerequisites are explicit.** Queue semantics, capability / label matching, `idem_key`
+  idempotency, capacity backpressure, deadlines, `job_event` handling, dispatch provenance, and the
+  Scoot-side unattended readonly clamp must exist as a coherent design before any partial dispatch UI
+  or API is exposed.
 
-### Phase 3 · Audit depth and operational maturity
+### Phase 3 · Governance and operational scale
 
-Serves the portraits "audit is replayable" and "data sensitivity is taken seriously".
+Serves the portraits "the center is a tightly defended inbound surface" and "data sensitivity is
+taken seriously" after the E1 maturity baseline is in place.
 
-- **Run-audit replay view.** Rebuild ingested JSONL audit by `seq/ts` into a readable timeline of
-  one run (thought / tool_call / observation / policy_deny / final).
-- **Retention and lifecycle.** Provide operational controls for the retention period, capacity cap,
-  cleanup, and `audit_gap` visibility of sensitive audit bodies.
-- **Alerting and health.** The ability to alert on observable signals like node-offline, version
-  drift, a `policy_deny` spike, and audit stalls.
+- **Notification and response maturity.** Health signals that are first visible in the dashboard can
+  later feed explicit notification or incident workflows, without silently mutating node state.
 - **Multi-operator governance.** Mature the dashboard's role / access control (still the center's
   own governance, not equal to Scoot permission config).
+- **Fleet-scale operations.** Keep storage, backup, cleanup, and dashboard performance understandable
+  as the number of nodes and retained audit bodies grows.
 
 ## What "done" looks like
 
@@ -260,12 +306,15 @@ Serves the portraits "audit is replayable" and "data sensitivity is taken seriou
 - **Ingest is lossless and dup-free.** A re-delivered `audit_batch` range is a no-op; the cursor
   advances only after the center acks; exceeding the retention cap produces an explicit `audit_gap`
   marker rather than a silent loss.
+- **E1 is production-credible before E2.** Production/dev transport behavior is explicit, deployment
+  and restore guidance exists, edge endpoint limits are visible, audit retention/gap behavior is
+  operator-understandable, and health signals surface on the dashboard before remote dispatch grows.
 - **Boundaries hold automatically.** Any path that tries to "raise a node's local policy ceiling",
   "write back Scoot's local state", "run raw commands on a node", or "reverse-connect into the edge"
   does not exist by design; dispatch can only downgrade.
-- **The inbound surface is secure.** All edge endpoints require HTTPS and a valid per-node token; a
-  token can be revoked individually without affecting the fleet; secrets never appear in the binary,
-  repo, logs, or audit.
+- **The inbound surface is secure.** All edge endpoints require production-safe transport and a valid
+  per-node token; a token can be rotated or revoked individually without affecting the fleet; secrets
+  never appear in the binary, repo, logs, or audit.
 - **Delivery is a single file.** The build artifact is one Go binary with embedded frontend assets;
   copy and run, with no external frontend process or Node toolchain at startup.
 - **Dispatch is end-to-end traceable.** Any job the center dispatches can be strung back to the

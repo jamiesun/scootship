@@ -17,6 +17,7 @@ import (
 
 	"github.com/jamiesun/scootship/internal/config"
 	"github.com/jamiesun/scootship/internal/loginguard"
+	"github.com/jamiesun/scootship/internal/operators"
 	"github.com/jamiesun/scootship/internal/store"
 	"github.com/jamiesun/scootship/internal/tokens"
 	"github.com/jamiesun/scootship/internal/version"
@@ -28,6 +29,7 @@ type Server struct {
 	cfg        config.Config
 	store      store.Store
 	tokens     *tokens.Registry
+	operators  *operators.Store
 	sessions   *sessionStore
 	loginGuard *loginguard.Guard
 	tmpl       *template.Template
@@ -36,20 +38,27 @@ type Server struct {
 }
 
 // sessionTTL is how long a dashboard login stays valid.
-const sessionTTL = 12 * time.Hour
+const (
+	// sessionTTL is the standard dashboard login duration.
+	sessionTTL = 12 * time.Hour
+	// rememberSessionTTL is used only when an operator explicitly selects
+	// "remember this device". This remembers the login session, never the password.
+	rememberSessionTTL = 30 * 24 * time.Hour
+)
 
 // New builds a center server. The dashboard templates are parsed once from the
 // embedded filesystem.
-func New(cfg config.Config, st store.Store, tk *tokens.Registry, logger *slog.Logger) (*Server, error) {
+func New(cfg config.Config, st store.Store, tk *tokens.Registry, ops *operators.Store, logger *slog.Logger) (*Server, error) {
 	tmpl, err := web.Templates(template.FuncMap{"trunc": trunc, "initial": initial})
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
-		cfg:      cfg,
-		store:    st,
-		tokens:   tk,
-		sessions: newSessionStore(sessionTTL),
+		cfg:       cfg,
+		store:     st,
+		tokens:    tk,
+		operators: ops,
+		sessions:  newSessionStore(sessionTTL),
 		loginGuard: loginguard.New(loginguard.Options{
 			MaxFails: cfg.LoginMaxFails,
 			Window:   cfg.LoginWindow,
@@ -62,7 +71,7 @@ func New(cfg config.Config, st store.Store, tk *tokens.Registry, logger *slog.Lo
 }
 
 // Handler wires the routes. Node-facing routes use bearer auth; dashboard routes
-// use basic auth; health and static assets are open.
+// use login-session auth; health and static assets are open.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -77,11 +86,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("POST /logout", s.handleLogout)
 
-	// Dashboard + JSON API (basic auth).
+	// Dashboard + JSON API (login-session auth).
 	mux.Handle("GET /{$}", s.requireAdmin(http.HandlerFunc(s.handleFleet)))
 	mux.Handle("GET /nodes/{id}", s.requireAdmin(http.HandlerFunc(s.handleNode)))
+	mux.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.handleTokens)))
+	mux.Handle("GET /account", s.requireAdmin(http.HandlerFunc(s.handleAccount)))
+	mux.Handle("POST /account", s.requireAdmin(http.HandlerFunc(s.handleAccountUpdate)))
+	mux.Handle("POST /account/password", s.requireAdmin(http.HandlerFunc(s.handleAccountPassword)))
+	mux.Handle("GET /operators", s.requireAdmin(http.HandlerFunc(s.handleOperators)))
+	mux.Handle("GET /operators/new", s.requireAdmin(http.HandlerFunc(s.handleOperatorCreatePage)))
+	mux.Handle("POST /operators", s.requireAdmin(http.HandlerFunc(s.handleOperatorCreate)))
+	mux.Handle("GET /operators/{username}", s.requireAdmin(http.HandlerFunc(s.handleOperatorEdit)))
+	mux.Handle("POST /operators/{username}", s.requireAdmin(http.HandlerFunc(s.handleOperatorUpdate)))
 	mux.Handle("GET /api/fleet", s.requireAdmin(http.HandlerFunc(s.handleAPIFleet)))
 	mux.Handle("GET /api/nodes/{id}", s.requireAdmin(http.HandlerFunc(s.handleAPINode)))
+	mux.Handle("GET /api/tokens", s.requireAdmin(http.HandlerFunc(s.handleAPITokens)))
+	mux.Handle("GET /api/operators", s.requireAdmin(http.HandlerFunc(s.handleAPIOperators)))
 
 	return s.securityHeaders(s.recoverPanic(s.logRequests(mux)))
 }
