@@ -153,6 +153,10 @@ tested:
   `SCOOTSHIP_*` environment variables; production plain HTTP fails closed unless direct TLS,
   explicit dev mode, or explicit trusted TLS-proxy mode is configured (`cmd/scootship`,
   `internal/config`).
+- **CI, release automation, and project skills.** GitHub Actions run CI and tag-driven release
+  builds for cross-platform single-binary archives with checksums; project-local skills document
+  controlled release orchestration and whole-project audits (`.github/workflows`,
+  `.agents/skills`).
 
 Phase 2 (task orchestration and dispatch) is not implemented yet: `GET /jobs/lease` is an
 observation-period stub today — it authenticates per the contract but dispatches no jobs.

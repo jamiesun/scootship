@@ -81,6 +81,17 @@ make mock-edge  # simulated node
 make ci         # fmt-check + vet + test + build
 ```
 
+## CI, release, and project skills
+
+- CI runs on pushes, pull requests, and manual dispatch via `.github/workflows/ci.yml`:
+  `gofmt`, `go vet`, `go test`, `go build`, a CLI version smoke, and release-target
+  cross-compile smoke checks.
+- Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which injects the tag
+  into `internal/version.Version`, cross-compiles single-binary archives for Linux, macOS,
+  and Windows, and publishes checksums with the GitHub release.
+- Project-local agent skills live in `.agents/skills`: `auto-release` for controlled release
+  orchestration and `project-audit` for scored whole-repo health reports.
+
 ## Configuration
 
 `serve` is configured from the environment (secrets never come from committed config):
@@ -133,6 +144,9 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `internal/center` | HTTP server, bearer + login-session auth, telemetry ingest, lease stub, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
+| `internal/version` | Build version string; release builds override it from the tag. |
+| `.github/workflows` | CI and tag-driven release automation. |
+| `.agents/skills` | Project-local release and audit skills. |
 | `docs/roadmap.md` | Project shape, non-goals, and direction. |
 
 ## Contributing
