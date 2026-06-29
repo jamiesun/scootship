@@ -150,8 +150,8 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - **Node token lifecycle (implemented):** dashboard operators can create, rotate, and revoke
   center-managed per-node authentication tokens; secrets are never displayed, returned by APIs,
   logged, or audited.
-- **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
-  in Phase 1. The pre-dispatch threat model is in
+- **E2 (stubbed):** `GET /jobs/lease` authenticates the node, requires a matching `node` query
+  param, bounds `capacity`, and dispatches nothing in Phase 1. The pre-dispatch threat model is in
   [`docs/dispatch-threat-model.md`](docs/dispatch-threat-model.md); it is a gate artifact, not
   implementation approval.
 
