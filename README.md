@@ -139,9 +139,11 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - Envelope `{"v":1,"type":"status|audit_batch|job|job_event","node_id":"...","sent_ts":...,"body":{}}`.
 - **E1 (implemented):** `POST /telemetry` accepts `status` and `audit_batch` (and forward-compatibly
   `job_event`). Audit ingest is idempotent on the `{file_gen, byte_to}` cursor and acks the durably
-  stored cursor so the edge only advances after a durable ack. The recent audit window is bounded by
-  `SCOOTSHIP_AUDIT_RETENTION_EVENTS`; trimming is visible as a center-side `audit_gap`. Node detail
-  API/pages also group retained audit by `session_id` / `run_id` into chronological run timelines.
+  stored cursor so the edge only advances after a durable ack. Telemetry batches are decoded and
+  validated before store mutation; invalid audit cursors, empty audit batches, and unknown audit
+  event kinds are rejected. The recent audit window is bounded by `SCOOTSHIP_AUDIT_RETENTION_EVENTS`;
+  trimming is visible as a center-side `audit_gap`. Node detail API/pages also group retained audit
+  by `session_id` / `run_id` into chronological run timelines.
 - **E1 health signals (implemented):** fleet and node pages derive read-only signals for stale nodes,
   version drift, audit body lag, retention gaps, duplicate audit reports, policy denies, system
   errors, and unrestricted local ceilings. They do not trigger remediation or mutate node state.

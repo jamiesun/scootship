@@ -101,8 +101,9 @@ the roadmap's non-goals as enforceable engineering rules.
 3. **No remote command execution.** A dispatched job (E2, later) carries a `goal` as opaque
    data only (`kind=run`). Never synthesize shell/eval from the wire.
 4. **The center never reverse-dials an edge.** Connections are always edge-initiated.
-5. **Audit ingest must stay idempotent.** Apply on the `{file_gen, byte_to}` cursor; a replayed
-   range is a no-op; ack only the durably stored cursor.
+5. **Audit ingest must stay idempotent.** Decode and validate a telemetry batch before mutating
+   store state; apply on the `{file_gen, byte_to}` cursor; a replayed range is a no-op; ack only the
+   durably stored cursor.
 6. **The UI ships embedded.** Dashboard assets are served from `embed.FS` in the one binary —
    no separate web process, no Node build step, no CDN runtime dependency.
 7. **Secrets never get compiled in, committed, logged, or printed.** Node tokens, TLS keys, and
@@ -123,9 +124,10 @@ the roadmap's non-goals as enforceable engineering rules.
 
 - **Phase 1 (now): observation + framework.** `status` and `audit_batch` ingest, the fleet
   dashboard, node registry, per-node token auth/lifecycle, and the mock-edge harness.
-- **Phase 1.5 (next): E1 operational maturity before new power.** Prefer production/dev transport
-  hardening, deployment docs, audit retention/gap visibility, run audit timelines, token lifecycle
-  hardening, and read-only health signals before expanding the authority surface.
+- **Phase 1.5 (current): E1 operational maturity before new power.** Keep tightening
+  production/dev transport, endpoint failure modes, audit retention/gap visibility, run audit
+  timelines, token lifecycle hardening, and read-only health signals before expanding the authority
+  surface.
 - **E2 (later, gated): job dispatch / orchestration.** The `/jobs/lease` endpoint is a stub
   today. Building real dispatch means capability/label routing, the only-lower policy clamp,
   idempotent `idem_key` apply, capacity backpressure, deadlines, and dispatch-provenance audit
