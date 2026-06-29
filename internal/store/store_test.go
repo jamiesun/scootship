@@ -146,6 +146,54 @@ func TestAuditRetentionGapIsExplicit(t *testing.T) {
 	}
 }
 
+func TestAuditTimelinesGroupRetainedEventsByRun(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	_, _, err = m.IngestAudit("n-1", 3000, protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 500, SeqTo: 5},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 100, SessionID: "s-1", RunID: "r-1", Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 110, SessionID: "s-1", RunID: "r-1", Kind: "tool_call", Msg: "grep"},
+			{Seq: 2, TS: 120, SessionID: "s-1", RunID: "r-1", Kind: "final", Msg: "done"},
+			{Seq: 3, TS: 210, SessionID: "s-2", Kind: "run", Msg: "other"},
+			{Seq: 4, TS: 220, Kind: "system_error", Msg: "unscoped"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	timelines := m.AuditTimelines("n-1", 0)
+	if len(timelines) != 3 {
+		t.Fatalf("timelines len = %d, want 3: %+v", len(timelines), timelines)
+	}
+	if timelines[0].TimelineID != "unscoped" || timelines[0].KindCounts.SystemError != 1 {
+		t.Fatalf("newest timeline should be unscoped system_error: %+v", timelines[0])
+	}
+	run := timelines[2]
+	if run.SessionID != "s-1" || run.RunID != "r-1" || run.EventCount != 3 {
+		t.Fatalf("session/run grouping wrong: %+v", run)
+	}
+	if run.FirstSeq != 0 || run.LastSeq != 2 || run.FirstTS != 100 || run.LastTS != 120 {
+		t.Fatalf("timeline bounds wrong: %+v", run)
+	}
+	if run.KindCounts.Run != 1 || run.KindCounts.ToolCall != 1 || run.KindCounts.Final != 1 {
+		t.Fatalf("kind counts wrong: %+v", run.KindCounts)
+	}
+	if len(run.Events) != 3 || run.Events[0].Event.Seq != 0 || run.Events[2].Event.Seq != 2 {
+		t.Fatalf("events not chronological: %+v", run.Events)
+	}
+
+	limited := m.AuditTimelines("n-1", 1)
+	if len(limited) != 1 || limited[0].TimelineID != "unscoped" {
+		t.Fatalf("timeline limit wrong: %+v", limited)
+	}
+}
+
 func TestReplayRebuildsState(t *testing.T) {
 	dir := t.TempDir()
 

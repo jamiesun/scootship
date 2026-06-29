@@ -58,7 +58,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | --- | --- |
 | `cmd/scootship/main.go` | CLI：`serve`、`mock-edge`、`version`；环境驱动启动；基于信号的优雅关闭。 |
 | `internal/protocol` | 冻结的 scoot-edge v1 契约：信封、status/audit/job bodies、幂等游标。最窄、最稳定的面 —— 只为跟随 EDGE.md 而改。 |
-| `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口和显式保留缺口。 |
+| `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口、显式保留缺口和保留窗口内运行时间线。 |
 | `internal/tokens` | 每节点 bearer-token 注册表。中心的节点鉴权面；**不是**节点策略配置。 |
 | `internal/operators` | 仪表盘操作员账户、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |

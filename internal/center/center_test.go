@@ -219,6 +219,57 @@ func TestDashboardAuditLifecycleGapVisible(t *testing.T) {
 	}
 }
 
+func TestDashboardRunAuditTimelineVisible(t *testing.T) {
+	ts, _ := newTestServer(t)
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 400, SeqTo: 4},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 100, SessionID: "s-1", RunID: "r-1", Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 110, SessionID: "s-1", RunID: "r-1", Kind: "tool_call", Msg: "grep"},
+			{Seq: 2, TS: 120, SessionID: "s-1", RunID: "r-1", Kind: "final", Msg: "done"},
+			{Seq: 3, TS: 200, SessionID: "s-2", Kind: "policy_deny", Msg: "blocked"},
+		},
+	}
+	resp, body := postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeAuditBatch, "n-1", batch))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("audit status=%d body=%s", resp.StatusCode, body)
+	}
+
+	client := loginClient(t, ts.URL)
+	api := getJSON(t, client, ts.URL+"/api/nodes/n-1")
+	timelines, ok := api["timelines"].([]any)
+	if !ok || len(timelines) != 2 {
+		t.Fatalf("API timelines missing or wrong len: %v", api["timelines"])
+	}
+	first, ok := timelines[0].(map[string]any)
+	if !ok || first["session_id"] != "s-2" {
+		t.Fatalf("newest timeline should be s-2: %v", timelines[0])
+	}
+
+	resp, err := client.Get(ts.URL + "/nodes/n-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	pageText := string(page)
+	for _, want := range []string{"Run Audit Timeline", "s-1", "r-1", "seq 0..2", "policy_deny"} {
+		if !strings.Contains(pageText, want) {
+			t.Fatalf("node page missing %q in run timeline: %s", want, pageText)
+		}
+	}
+
+	resp, err = client.Get(ts.URL + "/nodes/n-1?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zhPage, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(zhPage), "运行审计时间线") || !strings.Contains(string(zhPage), "会话") {
+		t.Fatalf("node page missing Chinese run timeline: %s", zhPage)
+	}
+}
+
 func TestTelemetryAuth(t *testing.T) {
 	ts, _ := newTestServer(t)
 	status := protocol.StatusBody{ScootVersion: "0.9.0"}

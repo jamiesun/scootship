@@ -131,7 +131,8 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - **E1 (implemented):** `POST /telemetry` accepts `status` and `audit_batch` (and forward-compatibly
   `job_event`). Audit ingest is idempotent on the `{file_gen, byte_to}` cursor and acks the durably
   stored cursor so the edge only advances after a durable ack. The recent audit window is bounded by
-  `SCOOTSHIP_AUDIT_RETENTION_EVENTS`; trimming is visible as a center-side `audit_gap`.
+  `SCOOTSHIP_AUDIT_RETENTION_EVENTS`; trimming is visible as a center-side `audit_gap`. Node detail
+  API/pages also group retained audit by `session_id` / `run_id` into chronological run timelines.
 - **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
   in Phase 1.
 
@@ -143,7 +144,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | --- | --- |
 | `cmd/scootship` | CLI entrypoint: `serve`, `mock-edge`, `version`. |
 | `internal/protocol` | The frozen scoot-edge v1 wire contract (envelope, bodies, cursor). |
-| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, and visible audit-retention gaps. |
+| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, visible audit-retention gaps, and retained-window run timelines. |
 | `internal/tokens` | Per-node bearer-token registry plus dashboard-safe token inventory metadata (the center's node auth surface). |
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |

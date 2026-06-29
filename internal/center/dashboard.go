@@ -49,6 +49,7 @@ type nodePage struct {
 	Online      bool
 	LastSeenAgo string
 	AuditGapAgo string
+	Timelines   []store.AuditTimeline
 	Audits      []store.StoredAudit
 }
 
@@ -123,6 +124,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		Online:      s.online(n.LastSeenMS),
 		LastSeenAgo: s.agoLang(lang, n.LastSeenMS),
 		AuditGapAgo: s.agoLang(lang, n.AuditLifecycle.LastGapRecvMS),
+		Timelines:   s.store.AuditTimelines(id, 25),
 		Audits:      s.store.AuditEvents(id, 100),
 	}
 	s.render(w, "node", page)
@@ -143,10 +145,11 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"now_ms": s.now().UnixMilli(),
-		"online": s.online(n.LastSeenMS),
-		"node":   n,
-		"audits": s.store.AuditEvents(id, 100),
+		"now_ms":    s.now().UnixMilli(),
+		"online":    s.online(n.LastSeenMS),
+		"node":      n,
+		"audits":    s.store.AuditEvents(id, 100),
+		"timelines": s.store.AuditTimelines(id, 25),
 	})
 }
 

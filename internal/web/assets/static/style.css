@@ -622,6 +622,41 @@ pre {
 table.audit td {
     vertical-align: top;
 }
+.timelines {
+    display: grid;
+    gap: 10px;
+}
+.timeline-run {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(28, 34, 48, 0.42);
+}
+.timeline-run summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--fg);
+    font-weight: 650;
+}
+.timeline-run summary:hover {
+    background: var(--panel-2);
+}
+.timeline-id {
+    overflow-wrap: anywhere;
+}
+.timeline-events {
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+}
+.timeline-events th:first-child,
+.timeline-events td:first-child {
+    width: 72px;
+}
 
 .stack-form,
 .grid-form {

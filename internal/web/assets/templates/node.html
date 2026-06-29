@@ -62,6 +62,37 @@
     </section>
 
     <section class="card">
+      <h3>{{t .Lang "node.run_timeline"}} <span class="muted">({{tf .Lang "node.run_timeline_hint" (len .Timelines)}})</span></h3>
+      {{if .Timelines}}
+        <div class="timelines">
+          {{range .Timelines}}
+          <details class="timeline-run" open>
+            <summary>
+              <span class="timeline-id">{{if .SessionID}}{{t $.Lang "node.timeline_session"}} <code>{{.SessionID}}</code>{{else}}{{t $.Lang "node.timeline_unscoped"}}{{end}}{{if .RunID}} · {{t $.Lang "node.timeline_run"}} <code>{{.RunID}}</code>{{end}}</span>
+              <span class="muted">{{tf $.Lang "node.timeline_events" .EventCount .FirstSeq .LastSeq}}</span>
+            </summary>
+            <table class="audit timeline-events">
+              <thead><tr><th>seq</th><th>ts</th><th>kind</th><th>msg</th></tr></thead>
+              <tbody>
+                {{range .Events}}
+                <tr>
+                  <td class="num-col muted">{{.Event.Seq}}</td>
+                  <td class="muted mono">{{.Event.TS}}</td>
+                  <td><span class="kind kind-{{.Event.Kind}}">{{.Event.Kind}}</span></td>
+                  <td class="msg">{{trunc .Event.Msg 160}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </details>
+          {{end}}
+        </div>
+      {{else}}
+        <p class="muted">{{t .Lang "node.timeline_empty"}}</p>
+      {{end}}
+    </section>
+
+    <section class="card">
       <h3>{{t .Lang "node.recent_audit"}} <span class="muted">({{tf .Lang "node.recent_audit_hint" (len .Audits)}})</span></h3>
       {{if .Audits}}
       <table class="audit">
