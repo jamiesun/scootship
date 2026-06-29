@@ -151,9 +151,11 @@ tested:
   offline/stale nodes, version drift, audit body lag, audit retention gaps, duplicate audit reports,
   policy denies, system errors, and unrestricted local ceilings without adding any remediation path
   (`internal/center`, `internal/web`).
-- **Node registry and token auth.** Per-node bearer-token auth; a token may only ever speak for its
-  own `node_id`; the dashboard exposes read-only token inventory metadata (source, fingerprint,
-  last authentication) without displaying bearer secrets (`internal/tokens`, `internal/center`).
+- **Node registry, token auth, and token lifecycle.** Per-node bearer-token auth; a token may only
+  ever speak for its own `node_id`; dashboard operators can create, rotate, and revoke
+  center-managed node authentication tokens. The dashboard/API expose only safe inventory metadata
+  (source, fingerprint, last authentication) and never display bearer secrets (`internal/tokens`,
+  `internal/center`, `internal/web`).
 - **Observation dashboard.** An embedded admin dashboard (fleet overview, node detail, token
   inventory, collapsible left sidebar), compiled into the single binary via `embed.FS`
   (`internal/web`, `internal/center`).
@@ -246,8 +248,8 @@ tightly defended inbound surface".
   capability descriptors, and `audit_batch` reporting. In Phase 1, lease polling verifies only the
   authenticated empty-dispatch contract (`X-Scootship-Dispatch: disabled-phase1`); real job
   lifecycle simulation belongs to E2 after the dispatch gate is satisfied.
-- **Node registry and token governance.** The center issues, stores (securely), recognizes,
-  rate-limits, and revokes **per-node** tokens — this is the center's own governance surface,
+- **Node registry and token governance.** The center creates, stores privately, recognizes, rotates,
+  and revokes **per-node** authentication tokens — this is the center's own governance surface,
   distinct from "Scoot permission config", and does not violate the hard rules above.
 - **Telemetry ingest (heartbeat first, then log bodies).** Get `status` heartbeats working first
   (version, daemon state, `policy_ceiling`, `audit_stats`); ingest `audit_batch` de-duplicated on
@@ -285,9 +287,9 @@ center's authority.
 - **Run audit timeline.** The dashboard can organize ingested audit by `session_id`, `run_id`, `seq`,
   and `ts`, so an operator can answer "what did this agent run actually do?" without reading raw
   JSONL.
-- **Token governance as node authentication, not node policy.** Token inventory matures toward clear
-  create / rotate / revoke flows and recent-authentication visibility, while never implying authority
-  to change a node's local `policy_ceiling`.
+- **Token governance as node authentication, not node policy.** Token lifecycle and
+  recent-authentication visibility stay clearly scoped to node authentication, never implying
+  authority to change a node's local `policy_ceiling`.
 - **Read-only health signals.** Node offline state, version drift, `policy_deny` spikes, audit stalls,
   and suspicious duplicate-reporting patterns become dashboard-visible signals before any notification
   or remediation system is added.

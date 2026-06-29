@@ -12,6 +12,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -23,10 +24,16 @@ import (
 // Source names where a token was configured. These are safe to show in the
 // dashboard because they disclose configuration provenance, not token material.
 const (
-	SourceFile   = "file"
-	SourceInline = "inline"
-	SourceDev    = "dev"
-	SourceMemory = "memory"
+	SourceFile    = "file"
+	SourceInline  = "inline"
+	SourceDev     = "dev"
+	SourceMemory  = "memory"
+	SourceManaged = "managed"
+)
+
+var (
+	ErrInvalidEntry   = errors.New("invalid token entry")
+	ErrDuplicateToken = errors.New("duplicate token")
 )
 
 // Entry is one node token before it is loaded into a Registry.
@@ -55,8 +62,10 @@ type record struct {
 // Registry maps presented bearer tokens to node_ids and keeps only safe metadata
 // for the dashboard. It intentionally never exposes token material.
 type Registry struct {
-	mu      sync.Mutex
-	byToken map[string]*record // token -> metadata; token is private to this package
+	mu           sync.Mutex
+	byToken      map[string]*record // token -> metadata; token is private to this package
+	managed      *ManagedStore
+	managedState ManagedState
 }
 
 // New builds a registry from a node_id -> token map. It is kept for tests and
@@ -71,20 +80,39 @@ func New(nodeToToken map[string]string) *Registry {
 
 // NewEntries builds a registry from explicit entries with source metadata.
 func NewEntries(entries []Entry) *Registry {
-	r := &Registry{byToken: make(map[string]*record, len(entries))}
+	return newEntries(entries, nil, ManagedState{})
+}
+
+// NewEntriesWithManaged builds a registry from static entries plus a center-
+// managed token lifecycle state. Managed tokens override static entries for the
+// same node, and managed revocations suppress static entries on load.
+func NewEntriesWithManaged(entries []Entry, managed *ManagedStore) (*Registry, error) {
+	state := ManagedState{}
+	if managed != nil {
+		var err error
+		state, err = managed.Load()
+		if err != nil {
+			return nil, err
+		}
+		entries = ApplyManagedState(entries, state)
+	}
+	return newEntries(entries, managed, state), nil
+}
+
+func newEntries(entries []Entry, managed *ManagedStore, state ManagedState) *Registry {
+	r := &Registry{
+		byToken:      make(map[string]*record, len(entries)),
+		managed:      managed,
+		managedState: normalizeManagedState(state),
+	}
 	byNode := map[string]string{}
 	for _, e := range entries {
-		node := strings.TrimSpace(e.NodeID)
-		tok := strings.TrimSpace(e.Token)
-		if node == "" || tok == "" {
+		node, tok, source, err := normalizeEntry(e.NodeID, e.Token, e.Source)
+		if err != nil {
 			continue
 		}
 		if prevToken, ok := byNode[node]; ok {
 			delete(r.byToken, prevToken)
-		}
-		source := strings.TrimSpace(e.Source)
-		if source == "" {
-			source = SourceMemory
 		}
 		r.byToken[tok] = &record{nodeID: node, source: source, fingerprint: fingerprint(tok)}
 		byNode[node] = tok
@@ -154,6 +182,77 @@ func (r *Registry) Snapshots() []Snapshot {
 		return out[i].Fingerprint < out[j].Fingerprint
 	})
 	return out
+}
+
+// UpsertManaged creates or rotates a center-managed token for nodeID. The token
+// secret is stored only in the private managed token file when one is
+// configured; callers must never echo it in responses or logs.
+func (r *Registry) UpsertManaged(nodeID, token string) error {
+	node, tok, source, err := normalizeEntry(nodeID, token, SourceManaged)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if rec, ok := r.byToken[tok]; ok && rec.nodeID != node {
+		return ErrDuplicateToken
+	}
+
+	state := normalizeManagedState(r.managedState)
+	if state.Tokens == nil {
+		state.Tokens = map[string]string{}
+	}
+	state.Tokens[node] = tok
+	state.Revoked = removeString(state.Revoked, node)
+	state = normalizeManagedState(state)
+	if r.managed != nil {
+		if err := r.managed.Save(state); err != nil {
+			return err
+		}
+	}
+	r.managedState = state
+	r.setLocked(node, tok, source)
+	return nil
+}
+
+// RevokeManaged revokes a node token at the center. For statically configured
+// tokens, the revocation is persisted in managed state so the static secret is
+// suppressed on restart without editing the operator-owned source file/env.
+func (r *Registry) RevokeManaged(nodeID string) error {
+	node := strings.TrimSpace(nodeID)
+	if node == "" {
+		return ErrInvalidEntry
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := normalizeManagedState(r.managedState)
+	delete(state.Tokens, node)
+	if !containsString(state.Revoked, node) {
+		state.Revoked = append(state.Revoked, node)
+	}
+	state = normalizeManagedState(state)
+	if r.managed != nil {
+		if err := r.managed.Save(state); err != nil {
+			return err
+		}
+	}
+	r.managedState = state
+	r.removeNodeLocked(node)
+	return nil
+}
+
+func (r *Registry) setLocked(node, tok, source string) {
+	r.removeNodeLocked(node)
+	r.byToken[tok] = &record{nodeID: node, source: source, fingerprint: fingerprint(tok)}
+}
+
+func (r *Registry) removeNodeLocked(node string) {
+	for tok, rec := range r.byToken {
+		if rec.nodeID == node {
+			delete(r.byToken, tok)
+		}
+	}
 }
 
 // LoadFile reads a JSON object mapping node_id -> token from path. The file must
@@ -237,6 +336,19 @@ func entriesFromMap(m map[string]string, source string) []Entry {
 		out = append(out, Entry{NodeID: node, Token: tok, Source: source})
 	}
 	return out
+}
+
+func normalizeEntry(nodeID, token, source string) (string, string, string, error) {
+	node := strings.TrimSpace(nodeID)
+	tok := strings.TrimSpace(token)
+	if node == "" || tok == "" {
+		return "", "", "", ErrInvalidEntry
+	}
+	src := strings.TrimSpace(source)
+	if src == "" {
+		src = SourceMemory
+	}
+	return node, tok, src, nil
 }
 
 func fingerprint(token string) string {

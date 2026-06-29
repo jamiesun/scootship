@@ -198,7 +198,7 @@ func resolveTokens(cfg config.Config, logger *slog.Logger) (*tokens.Registry, er
 		entries = append(entries, tokens.Entry{NodeID: "n-dev", Token: "dev-token", Source: tokens.SourceDev})
 		logger.Warn("SCOOTSHIP_DEV: seeded demo node token n-dev=dev-token (insecure; dev only)")
 	}
-	return tokens.NewEntries(entries), nil
+	return tokens.NewEntriesWithManaged(entries, tokens.NewManagedStore(cfg.DataDir))
 }
 
 func runMockEdge(logger *slog.Logger, args []string) error {

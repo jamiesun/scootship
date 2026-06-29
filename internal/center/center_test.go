@@ -764,6 +764,96 @@ func TestTokenInventoryDoesNotExposeSecrets(t *testing.T) {
 	}
 }
 
+func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+	createdSecret := "alpha-managed-token-0002"
+	rotatedSecret := "beta-managed-token-0002"
+
+	resp, err := client.PostForm(ts.URL+"/tokens", url.Values{
+		"node_id":       {"n-2"},
+		"token":         {createdSecret},
+		"confirm_token": {createdSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create token status=%d body=%s", resp.StatusCode, createBody)
+	}
+	if strings.Contains(string(createBody), createdSecret) {
+		t.Fatalf("create response leaked token secret: %s", createBody)
+	}
+
+	status := protocol.StatusBody{ScootVersion: "0.9.0"}
+	resp, body := postTelemetry(t, ts.URL, createdSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("created token telemetry status=%d body=%s", resp.StatusCode, body)
+	}
+
+	for _, path := range []string{"/api/tokens", "/tokens"} {
+		resp, err := client.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		bodyText := string(body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s = %d body=%s", path, resp.StatusCode, body)
+		}
+		if strings.Contains(bodyText, createdSecret) {
+			t.Fatalf("%s exposed created token secret: %s", path, body)
+		}
+		if !strings.Contains(bodyText, "n-2") || !strings.Contains(bodyText, "managed") || !strings.Contains(bodyText, "sha256:") {
+			t.Fatalf("%s missing managed token metadata: %s", path, body)
+		}
+	}
+
+	resp, err = client.PostForm(ts.URL+"/tokens/n-2/rotate", url.Values{
+		"token":         {rotatedSecret},
+		"confirm_token": {rotatedSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotateBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rotate token status=%d body=%s", resp.StatusCode, rotateBody)
+	}
+	if strings.Contains(string(rotateBody), rotatedSecret) || strings.Contains(string(rotateBody), createdSecret) {
+		t.Fatalf("rotate response leaked token secret: %s", rotateBody)
+	}
+	resp, _ = postTelemetry(t, ts.URL, createdSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old token after rotate got %d want 401", resp.StatusCode)
+	}
+	resp, body = postTelemetry(t, ts.URL, rotatedSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rotated token telemetry status=%d body=%s", resp.StatusCode, body)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/tokens/n-2/revoke", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revokeBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke token status=%d body=%s", resp.StatusCode, revokeBody)
+	}
+	if strings.Contains(string(revokeBody), rotatedSecret) {
+		t.Fatalf("revoke response leaked token secret: %s", revokeBody)
+	}
+	resp, _ = postTelemetry(t, ts.URL, rotatedSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("revoked token got %d want 401", resp.StatusCode)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	ts, _ := newTestServer(t)
 	m := getJSON(t, http.DefaultClient, ts.URL+"/healthz")

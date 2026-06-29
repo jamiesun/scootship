@@ -80,6 +80,89 @@ func TestNewEntriesLastNodeWins(t *testing.T) {
 	}
 }
 
+func TestManagedStateOverridesAndRevokesStaticTokens(t *testing.T) {
+	store := NewManagedStore(t.TempDir())
+	if err := store.Save(ManagedState{
+		Tokens:  map[string]string{"n-2": "managed-token-0002"},
+		Revoked: []string{"n-1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewEntriesWithManaged([]Entry{
+		{NodeID: "n-1", Token: "static-token-0001", Source: SourceFile},
+		{NodeID: "n-2", Token: "old-static-0002", Source: SourceInline},
+	}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node, ok := r.NodeFor("static-token-0001"); ok || node != "" {
+		t.Fatalf("revoked static token authenticated as %q", node)
+	}
+	if node, ok := r.NodeFor("old-static-0002"); ok || node != "" {
+		t.Fatalf("overridden static token authenticated as %q", node)
+	}
+	if node, ok := r.NodeFor("managed-token-0002"); !ok || node != "n-2" {
+		t.Fatalf("managed token = %q %v, want n-2 true", node, ok)
+	}
+	snaps := r.Snapshots()
+	if len(snaps) != 1 || snaps[0].NodeID != "n-2" || snaps[0].Source != SourceManaged {
+		t.Fatalf("unexpected managed snapshots: %+v", snaps)
+	}
+}
+
+func TestManagedLifecyclePersistsPrivateState(t *testing.T) {
+	dir := t.TempDir()
+	store := NewManagedStore(dir)
+	r, err := NewEntriesWithManaged([]Entry{{NodeID: "n-1", Token: "static-token-0001", Source: SourceFile}}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.UpsertManaged("n-1", "rotated-token-0001"); err != nil {
+		t.Fatal(err)
+	}
+	if node, ok := r.NodeFor("static-token-0001"); ok || node != "" {
+		t.Fatalf("old static token should be rotated away, got %q %v", node, ok)
+	}
+	if node, ok := r.NodeFor("rotated-token-0001"); !ok || node != "n-1" {
+		t.Fatalf("rotated token = %q %v, want n-1 true", node, ok)
+	}
+
+	path := ManagedPath(dir)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("managed token state mode = %04o, want 0600", got)
+	}
+
+	if err := r.RevokeManaged("n-1"); err != nil {
+		t.Fatal(err)
+	}
+	if node, ok := r.NodeFor("rotated-token-0001"); ok || node != "" {
+		t.Fatalf("revoked token authenticated as %q", node)
+	}
+	reloaded, err := NewEntriesWithManaged([]Entry{{NodeID: "n-1", Token: "static-token-0001", Source: SourceFile}}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Count() != 0 {
+		t.Fatalf("revocation should suppress static token on restart, got %d tokens", reloaded.Count())
+	}
+}
+
+func TestManagedLifecycleRejectsDuplicateTokenForAnotherNode(t *testing.T) {
+	r := NewEntries([]Entry{
+		{NodeID: "n-1", Token: "shared-token-0001", Source: SourceFile},
+	})
+	if err := r.UpsertManaged("n-2", "shared-token-0001"); err != ErrDuplicateToken {
+		t.Fatalf("UpsertManaged duplicate err = %v, want ErrDuplicateToken", err)
+	}
+	if node, ok := r.NodeFor("shared-token-0001"); !ok || node != "n-1" {
+		t.Fatalf("duplicate attempt changed ownership: %q %v", node, ok)
+	}
+}
+
 func TestLoadFileRequiresPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	if err := os.WriteFile(path, []byte(`{"n-1":"secret"}`), 0o644); err != nil {

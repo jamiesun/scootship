@@ -59,7 +59,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `cmd/scootship/main.go` | CLI：`serve`、`mock-edge`、`version`；环境驱动启动；基于信号的优雅关闭。 |
 | `internal/protocol` | 冻结的 scoot-edge v1 契约：信封、status/audit/job bodies、幂等游标。最窄、最稳定的面 —— 只为跟随 EDGE.md 而改。 |
 | `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口、显式保留缺口和保留窗口内运行时间线。 |
-| `internal/tokens` | 每节点 bearer-token 注册表。中心的节点鉴权面；**不是**节点策略配置。 |
+| `internal/tokens` | 每节点 bearer-token 注册表与私有托管生命周期 overlay。中心的节点鉴权面；**不是**节点策略配置。 |
 | `internal/operators` | 仪表盘操作员账户、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |
 | `internal/config` | `SCOOTSHIP_*` 环境配置。 |
@@ -103,9 +103,9 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 ## 阶段边界
 
 - **阶段一（现在）：观测 + 框架。** `status` 与 `audit_batch` 摄入、车队仪表盘、节点注册表、每节点
-  令牌鉴权，以及 mock-edge 装置。
+  令牌鉴权 / 生命周期，以及 mock-edge 装置。
 - **阶段一半（下一步）：先补 E1 运维成熟度，再新增权力。** 在扩大中心权力面前，优先做生产 / dev
-  传输硬化、部署文档、审计保留 / gap 可见性、运行审计时间线、token 吊销 / 轮换流程和只读健康信号。
+  传输硬化、部署文档、审计保留 / gap 可见性、运行审计时间线、token 生命周期加固和只读健康信号。
 - **E2（以后，需门禁）：作业派发 / 编排。** `/jobs/lease` 端点今天是占位。构建真实派发意味着能力/标签
   路由、只降不升的策略 clamp、幂等 `idem_key` 应用、容量背压、截止期限，以及通过 `session_id` 关联
   到运行的派发溯源审计。不要把派发半路接进阶段一；在路线图 E2 派发门禁以代码、测试、运维文档、兼容的
