@@ -69,9 +69,9 @@ go run ./cmd/scootship mock-edge -ship-audit
 
 Open <http://localhost:8080>. You'll be redirected to a sign-in page — in dev mode log in with
 `admin` / `admin`. After signing in you get the dashboard shell with a **collapsible left
-sidebar**: the `n-dev` node goes **online**, with its policy ceiling, derived audit counts,
-capability labels, and (because `-ship-audit` is on) a few ingested audit events on the node
-detail page.
+sidebar** (Fleet, Tokens, Operators + a Settings menu with Account), plus top-right sign-out:
+the `n-dev` node goes **online**, with its policy ceiling, derived audit counts, capability
+labels, and (because `-ship-audit` is on) a few ingested audit events on the node detail page.
 
 Or use the Makefile:
 
@@ -88,11 +88,12 @@ make ci         # fmt-check + vet + test + build
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SCOOTSHIP_ADDR` | `:8080` | Listen address. |
-| `SCOOTSHIP_TLS_CERT` / `SCOOTSHIP_TLS_KEY` | _(unset)_ | PEM paths. EDGE.md mandates HTTPS in production; without these the center serves plain HTTP and warns loudly (dev only / terminate TLS at a proxy). |
+| `SCOOTSHIP_TLS_CERT` / `SCOOTSHIP_TLS_KEY` | _(unset)_ | PEM paths for direct HTTPS. EDGE.md mandates production-safe transport. Without direct TLS, startup fails unless `SCOOTSHIP_DEV=1` or `SCOOTSHIP_BEHIND_TLS_PROXY=1` is explicit. |
+| `SCOOTSHIP_BEHIND_TLS_PROXY` | _(unset)_ | `=1` allows the center to listen with plain HTTP only when a trusted reverse proxy terminates TLS in front of it. Ensure the listener is not directly exposed. |
 | `SCOOTSHIP_DATA_DIR` | `./data` | Append-only store directory. |
-| `SCOOTSHIP_ADMIN_USER` | `admin` | Dashboard login user. |
-| `SCOOTSHIP_ADMIN_PASSWORD` | _(unset)_ | Dashboard login password. Required unless `SCOOTSHIP_DEV=1` (which enables a default `admin`/`admin` login). |
-| `SCOOTSHIP_NODE_TOKENS_FILE` | _(unset)_ | JSON file: `{"n-7a3":"secret", ...}` (mode `0600`). |
+| `SCOOTSHIP_ADMIN_USER` | `admin` | Username used to bootstrap the first dashboard operator when the operator store is empty. |
+| `SCOOTSHIP_ADMIN_PASSWORD` | _(unset)_ | Password used only to bootstrap the first dashboard operator. Required for first startup unless `SCOOTSHIP_DEV=1` (which bootstraps `admin`/`admin`). After bootstrap, operators are managed from the dashboard and stored in `SCOOTSHIP_DATA_DIR/operators.json`. |
+| `SCOOTSHIP_NODE_TOKENS_FILE` | _(unset)_ | JSON file: `{"n-7a3":"secret", ...}`. Must be a regular private file with no executable, group, or world permissions (`0600` is the normal setting). |
 | `SCOOTSHIP_NODE_TOKENS` | _(unset)_ | Inline `n-7a3=secret,n-8b4=secret2`. |
 | `SCOOTSHIP_DEV` | _(unset)_ | `=1` seeds the demo node token and a default `admin`/`admin` dashboard login (insecure; local use). |
 | `SCOOTSHIP_STALE_SECONDS` | `90` | A node is shown "stale" after this much silence. |
@@ -125,10 +126,11 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `cmd/scootship` | CLI entrypoint: `serve`, `mock-edge`, `version`. |
 | `internal/protocol` | The frozen scoot-edge v1 wire contract (envelope, bodies, cursor). |
 | `internal/store` | Append-only JSONL fleet store with idempotent audit ingest + replay. |
-| `internal/tokens` | Per-node bearer-token registry (the center's own auth surface). |
+| `internal/tokens` | Per-node bearer-token registry plus dashboard-safe token inventory metadata (the center's node auth surface). |
+| `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |
 | `internal/config` | Environment-driven configuration. |
-| `internal/center` | HTTP server, bearer + login-session auth, telemetry ingest, lease stub, dashboard. |
+| `internal/center` | HTTP server, bearer + login-session auth, telemetry ingest, lease stub, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
 | `docs/roadmap.md` | Project shape, non-goals, and direction. |

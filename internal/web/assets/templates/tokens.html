@@ -1,0 +1,53 @@
+{{define "tokens"}}{{template "header" .}}
+    <section class="summary">
+      <div class="stat">
+        <span class="num">{{.Total}}</span>
+        <span class="lbl">tokens</span>
+      </div>
+      <div class="stat">
+        <span class="num ok">{{.Authenticated}}</span>
+        <span class="lbl">used</span>
+      </div>
+      <div class="stat">
+        <span class="num">{{.KnownNodes}}</span>
+        <span class="lbl">known nodes</span>
+      </div>
+    </section>
+
+    <section class="card notice">
+      <h3>token inventory</h3>
+      <p class="muted">Read-only metadata. Bearer token secrets are never displayed, returned by the API, logged, or written to audit.</p>
+    </section>
+
+    {{if .Rows}}
+    <table class="tokens">
+      <thead>
+        <tr>
+          <th>node</th>
+          <th>source</th>
+          <th>fingerprint</th>
+          <th>node state</th>
+          <th>last authenticated</th>
+          <th>last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        <tr>
+          <td>{{if .KnownNode}}<a href="/nodes/{{.NodeID}}" class="node-link">{{.NodeID}}</a>{{else}}<span class="mono">{{.NodeID}}</span>{{end}}</td>
+          <td><span class="tag source source-{{.Source}}">{{.Source}}</span></td>
+          <td class="mono muted">{{.Fingerprint}}</td>
+          <td>{{if .KnownNode}}{{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}{{else}}<span class="pill muted-pill">not reported</span>{{end}}</td>
+          <td class="muted">{{.LastAuthenticatedAgo}}</td>
+          <td class="muted">{{.LastSeenAgo}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <section class="empty">
+      <h2>No node tokens are configured.</h2>
+      <p>Set <code>SCOOTSHIP_NODE_TOKENS_FILE</code> to a private JSON file or <code>SCOOTSHIP_NODE_TOKENS</code> for local testing. Without a configured token, no edge can authenticate.</p>
+    </section>
+    {{end}}
+{{template "footer" .}}{{end}}

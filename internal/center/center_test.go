@@ -11,9 +11,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jamiesun/scootship/internal/center"
 	"github.com/jamiesun/scootship/internal/config"
+	"github.com/jamiesun/scootship/internal/operators"
 	"github.com/jamiesun/scootship/internal/protocol"
 	"github.com/jamiesun/scootship/internal/store"
 	"github.com/jamiesun/scootship/internal/tokens"
@@ -36,8 +38,12 @@ func newServer(t *testing.T, cfg config.Config) (*httptest.Server, store.Store) 
 		t.Fatal(err)
 	}
 	reg := tokens.New(map[string]string{"n-1": "secret"})
+	ops, err := operators.Open("", cfg.AdminUser, cfg.AdminPassword, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv, err := center.New(cfg, st, reg, logger)
+	srv, err := center.New(cfg, st, reg, ops, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,28 +186,32 @@ func TestTelemetryAuth(t *testing.T) {
 func TestDashboardRequiresLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	// API without a session -> 401.
-	resp, err := http.Get(ts.URL + "/api/fleet")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated api: got %d want 401", resp.StatusCode)
+	// APIs without a session -> 401.
+	for _, path := range []string{"/api/fleet", "/api/tokens"} {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated %s: got %d want 401", path, resp.StatusCode)
+		}
 	}
 
-	// HTML page without a session -> redirect to /login.
+	// HTML pages without a session -> redirect to /login.
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err = noRedirect.Get(ts.URL + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("unauthenticated page: got %d want 303", resp.StatusCode)
-	}
-	if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/login") {
-		t.Fatalf("expected redirect to /login, got %q", loc)
+	for _, path := range []string{"/", "/tokens"} {
+		resp, err := noRedirect.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("unauthenticated page %s: got %d want 303", path, resp.StatusCode)
+		}
+		if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/login") {
+			t.Fatalf("expected redirect to /login, got %q", loc)
+		}
 	}
 }
 
@@ -268,6 +278,158 @@ func TestLoginLockout(t *testing.T) {
 	}
 }
 
+func TestRememberDeviceExtendsSessionCookie(t *testing.T) {
+	ts, _ := newTestServer(t)
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := c.PostForm(ts.URL+"/login", url.Values{
+		"user":     {"admin"},
+		"password": {"testpass"},
+		"remember": {"1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("login status=%d, want 303", resp.StatusCode)
+	}
+	var sessionCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "scootship_session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("missing session cookie")
+	}
+	if time.Until(sessionCookie.Expires) < 29*24*time.Hour {
+		t.Fatalf("remembered session expires too soon: %s", sessionCookie.Expires)
+	}
+}
+
+func TestOperatorManagementFlow(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+
+	resp, err := client.Get(ts.URL + "/operators")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("operators list status=%d", resp.StatusCode)
+	}
+	if !strings.Contains(string(listBody), "href=\"/operators/new\"") {
+		t.Fatalf("operators list missing create link: %s", listBody)
+	}
+	if strings.Contains(string(listBody), "name=\"confirm_password\"") {
+		t.Fatalf("operators list should not render create form by default: %s", listBody)
+	}
+
+	resp, err = client.Get(ts.URL + "/operators/new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("operators new status=%d", resp.StatusCode)
+	}
+	if !strings.Contains(string(newBody), "name=\"confirm_password\"") {
+		t.Fatalf("operators new page missing create form: %s", newBody)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/operators", url.Values{
+		"username":         {"alice"},
+		"display_name":     {"Alice"},
+		"email":            {"alice@example.test"},
+		"password":         {"alice-pass"},
+		"confirm_password": {"alice-pass"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create operator status=%d", resp.StatusCode)
+	}
+
+	resp, err = client.Get(ts.URL + "/api/operators")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("api operators status=%d body=%s", resp.StatusCode, body)
+	}
+	bodyText := string(body)
+	if !strings.Contains(bodyText, "alice") {
+		t.Fatalf("created operator missing from API: %s", body)
+	}
+	if strings.Contains(bodyText, "alice-pass") || strings.Contains(bodyText, "password_hash") {
+		t.Fatalf("operator API leaked password material: %s", body)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/operators/alice", url.Values{
+		"action":           {"password"},
+		"new_password":     {"alice-new"},
+		"confirm_password": {"alice-new"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reset password status=%d", resp.StatusCode)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	alice := &http.Client{Jar: jar}
+	resp, err = alice.PostForm(ts.URL+"/login", url.Values{
+		"user":     {"alice"},
+		"password": {"alice-new"},
+		"next":     {"/account"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/account" {
+		t.Fatalf("alice login failed: status=%d path=%s", resp.StatusCode, resp.Request.URL.Path)
+	}
+}
+
+func TestAccountPasswordChange(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+	resp, err := client.PostForm(ts.URL+"/account/password", url.Values{
+		"current_password": {"testpass"},
+		"new_password":     {"changed"},
+		"confirm_password": {"changed"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("change password status=%d", resp.StatusCode)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	fresh := &http.Client{Jar: jar}
+	resp, err = fresh.PostForm(ts.URL+"/login", url.Values{"user": {"admin"}, "password": {"changed"}, "next": {"/account"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/account" {
+		t.Fatalf("login with changed password failed: status=%d path=%s", resp.StatusCode, resp.Request.URL.Path)
+	}
+}
+
 func TestLogout(t *testing.T) {
 	ts, _ := newTestServer(t)
 	client := loginClient(t, ts.URL)
@@ -312,6 +474,38 @@ func TestLeaseIsObservationOnly(t *testing.T) {
 	}
 	if got := resp.Header.Get("X-Scootship-Dispatch"); got != "disabled-phase1" {
 		t.Fatalf("expected dispatch disabled marker, got %q", got)
+	}
+}
+
+func TestTokenInventoryDoesNotExposeSecrets(t *testing.T) {
+	ts, _ := newTestServer(t)
+	status := protocol.StatusBody{ScootVersion: "0.9.0"}
+	resp, body := postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeStatus, "n-1", status))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("heartbeat status=%d body=%s", resp.StatusCode, body)
+	}
+
+	client := loginClient(t, ts.URL)
+	for _, path := range []string{"/api/tokens", "/tokens"} {
+		resp, err := client.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s = %d body=%s", path, resp.StatusCode, body)
+		}
+		bodyText := string(body)
+		if strings.Contains(bodyText, `"secret"`) || strings.Contains(bodyText, ">secret<") {
+			t.Fatalf("%s exposed bearer token secret in response: %s", path, body)
+		}
+		if !strings.Contains(bodyText, "sha256:") {
+			t.Fatalf("%s missing safe token fingerprint: %s", path, body)
+		}
+		if path == "/api/tokens" && !strings.Contains(bodyText, "last_authenticated") {
+			t.Fatalf("%s missing auth activity metadata: %s", path, body)
+		}
 	}
 }
 

@@ -54,7 +54,8 @@ make mock-edge      # 针对本地中心的模拟节点
 | `cmd/scootship/main.go` | CLI：`serve`、`mock-edge`、`version`；环境驱动启动；基于信号的优雅关闭。 |
 | `internal/protocol` | 冻结的 scoot-edge v1 契约：信封、status/audit/job bodies、幂等游标。最窄、最稳定的面 —— 只为跟随 EDGE.md 而改。 |
 | `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、内存中的车队索引。 |
-| `internal/tokens` | 每节点 bearer-token 注册表。中心自己的治理面；**不是**节点策略配置。 |
+| `internal/tokens` | 每节点 bearer-token 注册表。中心的节点鉴权面；**不是**节点策略配置。 |
+| `internal/operators` | 仪表盘操作员账户、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |
 | `internal/config` | `SCOOTSHIP_*` 环境配置。 |
 | `internal/center` | HTTP 服务器、鉴权中间件、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、仪表盘登录会话、仪表盘 + JSON API。 |
@@ -79,7 +80,7 @@ make mock-edge      # 针对本地中心的模拟节点
    存储的游标。
 6. **UI 以嵌入方式交付。** 仪表盘资源从单二进制里的 `embed.FS` 提供 —— 没有独立 web 进程、没有 Node
    构建步骤、没有 CDN 运行时依赖。
-7. **密钥绝不被编进、提交、记录或打印。** 节点令牌、TLS 私钥和仪表盘密码来自环境变量或 `0600` 文件。
+7. **密钥绝不被编进、提交、记录或打印。** 节点令牌、TLS 私钥和 bootstrap 仪表盘密码来自环境变量或私有文件；持久化的操作员密码必须是单向哈希。
    不要记录 `Authorization` 头。
 8. **每个节点与仪表盘端点都要鉴权。** 节点路由用 bearer token，仪表盘用登录会话（表单登录 + HttpOnly
    cookie）。一个令牌只能为它自己的 `node_id` 说话。仪表盘登录按来源 IP 限流（`internal/loginguard`）：
@@ -94,9 +95,12 @@ make mock-edge      # 针对本地中心的模拟节点
 
 - **阶段一（现在）：观测 + 框架。** `status` 与 `audit_batch` 摄入、车队仪表盘、节点注册表、每节点
   令牌鉴权，以及 mock-edge 装置。
+- **阶段一半（下一步）：先补 E1 运维成熟度，再新增权力。** 在扩大中心权力面前，优先做生产 / dev
+  传输硬化、部署文档、审计保留 / gap 可见性、运行审计时间线、token 吊销 / 轮换流程和只读健康信号。
 - **E2（以后，需开关）：作业派发 / 编排。** `/jobs/lease` 端点今天是占位。构建真实派发意味着能力/标签
   路由、只降不升的策略 clamp、幂等 `idem_key` 应用、容量背压、截止期限，以及通过 `session_id` 关联
-  到运行的派发溯源审计。不要把派发半路接进阶段一。
+  到运行的派发溯源审计。不要把派发半路接进阶段一；在阶段一半成熟基线和 Scoot 侧无人值守 readonly
+  clamp 存在前，不要暴露局部派发 UI/API。
 
 ## 扩展工作流
 

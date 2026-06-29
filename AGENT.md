@@ -60,7 +60,8 @@ After changing any `.go` file, run at least `go build ./...` and `go test ./...`
 | `cmd/scootship/main.go` | CLI: `serve`, `mock-edge`, `version`; env-driven startup; signal-based shutdown. |
 | `internal/protocol` | The frozen scoot-edge v1 contract: envelope, status/audit/job bodies, idempotency cursor. The narrowest, most stable surface — change only to track EDGE.md. |
 | `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, in-memory fleet index. |
-| `internal/tokens` | Per-node bearer-token registry. The center's own governance surface; **not** node policy config. |
+| `internal/tokens` | Per-node bearer-token registry. The center's node auth surface; **not** node policy config. |
+| `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
 | `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, dashboard login session, dashboard + JSON API. |
@@ -89,7 +90,8 @@ enforceable engineering rules).
 6. **The UI ships embedded.** Dashboard assets are served from `embed.FS` in the one binary —
    no separate web process, no Node build step, no CDN runtime dependency.
 7. **Secrets never get compiled in, committed, logged, or printed.** Node tokens, TLS keys, and
-   the dashboard password come from env or a `0600` file. Do not log the `Authorization` header.
+   bootstrap dashboard passwords come from env or a private file; persisted operator passwords must
+   be one-way hashes. Do not log the `Authorization` header.
 8. **Authenticate every node and dashboard endpoint.** Bearer token for node routes, a login
    session (form login + HttpOnly cookie) for the dashboard. A token may only ever speak for
    its own `node_id`. The dashboard login is throttled per source IP (`internal/loginguard`):
@@ -105,10 +107,15 @@ enforceable engineering rules).
 
 - **Phase 1 (now): observation + framework.** `status` and `audit_batch` ingest, the fleet
   dashboard, node registry, per-node token auth, and the mock-edge harness.
+- **Phase 1.5 (next): E1 operational maturity before new power.** Prefer production/dev transport
+  hardening, deployment docs, audit retention/gap visibility, run audit timelines, token
+  revoke/rotate flows, and read-only health signals before expanding the authority surface.
 - **E2 (later, gated): job dispatch / orchestration.** The `/jobs/lease` endpoint is a stub
   today. Building real dispatch means capability/label routing, the only-lower policy clamp,
   idempotent `idem_key` apply, capacity backpressure, deadlines, and dispatch-provenance audit
-  joined to runs by `session_id`. Do not partially wire dispatch into Phase 1.
+  joined to runs by `session_id`. Do not partially wire dispatch into Phase 1; do not expose
+  partial dispatch UI/API until the Phase 1.5 maturity baseline and Scoot-side unattended readonly
+  clamp exist.
 
 ## Extension workflow
 

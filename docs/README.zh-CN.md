@@ -64,8 +64,9 @@ go run ./cmd/scootship mock-edge -ship-audit
 ```
 
 打开 <http://localhost:8080>。你会被重定向到登录页 —— 在 dev 模式下用 `admin` / `admin` 登录。登录
-后你会看到带**可收拢左侧菜单**的仪表盘外壳：`n-dev` 节点变为**在线**，显示其策略天花板、派生的审计
-计数、能力标签，以及（因为开了 `-ship-audit`）节点详情页上几条已摄入的审计事件。
+后你会看到带**可收拢左侧菜单**的仪表盘外壳（Fleet、Tokens、Operators + 含 Account 的 Settings 菜单），
+并在右上角提供退出登录：`n-dev` 节点变为**在线**，显示其策略天花板、派生的审计计数、能力标签，以及
+（因为开了 `-ship-audit`）节点详情页上几条已摄入的审计事件。
 
 或使用 Makefile：
 
@@ -82,11 +83,12 @@ make ci         # fmt-check + vet + test + build
 | 变量 | 默认值 | 含义 |
 | --- | --- | --- |
 | `SCOOTSHIP_ADDR` | `:8080` | 监听地址。 |
-| `SCOOTSHIP_TLS_CERT` / `SCOOTSHIP_TLS_KEY` | _(未设置)_ | PEM 路径。EDGE.md 要求生产环境用 HTTPS；不设置时中心以明文 HTTP 服务并大声告警（仅限 dev / 在反代终止 TLS）。 |
+| `SCOOTSHIP_TLS_CERT` / `SCOOTSHIP_TLS_KEY` | _(未设置)_ | 直连 HTTPS 的 PEM 路径。EDGE.md 要求生产安全传输；未配置直连 TLS 时，除非显式 `SCOOTSHIP_DEV=1` 或 `SCOOTSHIP_BEHIND_TLS_PROXY=1`，否则启动失败。 |
+| `SCOOTSHIP_BEHIND_TLS_PROXY` | _(未设置)_ | `=1` 表示中心只在可信反向代理终止 TLS 后方监听明文 HTTP。必须确保该监听地址不会被直接暴露。 |
 | `SCOOTSHIP_DATA_DIR` | `./data` | append-only 存储目录。 |
-| `SCOOTSHIP_ADMIN_USER` | `admin` | 仪表盘登录用户。 |
-| `SCOOTSHIP_ADMIN_PASSWORD` | _(未设置)_ | 仪表盘登录密码。除非 `SCOOTSHIP_DEV=1`（它会启用默认 `admin`/`admin` 登录），否则必填。 |
-| `SCOOTSHIP_NODE_TOKENS_FILE` | _(未设置)_ | JSON 文件：`{"n-7a3":"secret", ...}`（权限 `0600`）。 |
+| `SCOOTSHIP_ADMIN_USER` | `admin` | 当操作员存储为空时，用于 bootstrap 第一个仪表盘操作员的用户名。 |
+| `SCOOTSHIP_ADMIN_PASSWORD` | _(未设置)_ | 仅用于 bootstrap 第一个仪表盘操作员的密码。首次启动除非 `SCOOTSHIP_DEV=1`（会 bootstrap `admin`/`admin`），否则必填。bootstrap 后操作员在仪表盘中管理，并存于 `SCOOTSHIP_DATA_DIR/operators.json`。 |
+| `SCOOTSHIP_NODE_TOKENS_FILE` | _(未设置)_ | JSON 文件：`{"n-7a3":"secret", ...}`。必须是普通私有文件，不能有可执行、组或其他用户权限（通常设置为 `0600`）。 |
 | `SCOOTSHIP_NODE_TOKENS` | _(未设置)_ | 内联 `n-7a3=secret,n-8b4=secret2`。 |
 | `SCOOTSHIP_DEV` | _(未设置)_ | `=1` 种子演示节点令牌和默认 `admin`/`admin` 仪表盘登录（不安全；本地使用）。 |
 | `SCOOTSHIP_STALE_SECONDS` | `90` | 节点静默这么多秒后显示为「stale」。 |
@@ -117,10 +119,11 @@ scootship 只说这份契约；它不依赖任何 Scoot 内部实现。
 | `cmd/scootship` | CLI 入口：`serve`、`mock-edge`、`version`。 |
 | `internal/protocol` | 冻结的 scoot-edge v1 线缆契约（信封、bodies、游标）。 |
 | `internal/store` | append-only JSONL 车队存储，带幂等审计摄入 + 重放。 |
-| `internal/tokens` | 每节点 bearer-token 注册表（中心自己的鉴权面）。 |
+| `internal/tokens` | 每节点 bearer-token 注册表及仪表盘安全可展示的令牌清单元数据（中心的节点鉴权面）。 |
+| `internal/operators` | 仪表盘操作员账户、资料/密码管理与密码哈希。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（失败窗口 + 锁定）。 |
 | `internal/config` | 环境驱动的配置。 |
-| `internal/center` | HTTP 服务器、bearer + 登录会话鉴权、遥测摄入、lease 占位、仪表盘。 |
+| `internal/center` | HTTP 服务器、bearer + 登录会话鉴权、遥测摄入、lease 占位、仪表盘 + JSON API。 |
 | `internal/web` | 嵌入式仪表盘模板与静态资源（`embed.FS`）。 |
 | `internal/mockedge` | 模拟的 scoot-edge 节点（替代尚未构建的边缘）。 |
 | `docs/roadmap.zh-CN.md` | 项目形态、非目标与方向。 |
