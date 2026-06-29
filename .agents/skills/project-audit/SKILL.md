@@ -10,8 +10,10 @@ configuration, security boundaries, and release automation. This is a repo-wide
 health review, not a feature implementation pass.
 
 Run read-only checks by default. Do not commit anything and do not edit tracked
-source/docs/config as part of an audit. The only write is the report under
-`reports/` (which should be gitignored).
+source/docs/config as part of an audit. The only allowed write is the report under
+`reports/` when that path is already ignored; otherwise write the report to `/tmp`
+and state why. Never "fix" audit hygiene, `.gitignore`, docs, source, or workflows
+during the audit pass.
 
 ## Evidence floor vs. ceiling (read first)
 
@@ -68,7 +70,8 @@ pointer (path, line, command output, or count).
    file only.
 6. **Security & vulnerabilities (SEC).** Node/dashboard auth cannot be bypassed;
    token-to-node binding holds; login guard is per source IP; trusted proxy logic
-   is constrained; secrets are not logged, committed, printed, or embedded.
+   is constrained; secrets are not logged, committed, printed, or embedded. Secret
+   checks must report only paths/classes, never raw values.
 7. **Bilingual documentation parity (BL).** English canonical docs and Chinese
    counterparts stay in sync: README, AGENT, roadmap, commands, config, safety
    rules, phase boundaries, and workflow notes.
@@ -141,11 +144,14 @@ is a `FAIL`. A stubbed `/jobs/lease` that dispatches nothing is expected in Phas
 
 ```sh
 grep -R "SCOOTSHIP_" -n internal/config cmd/scootship README.md docs/README.zh-CN.md
-grep -RniE "token|password|secret|tls" . --exclude-dir=.git --exclude-dir=data --exclude-dir=bin --exclude-dir=dist --exclude='*.sum'
+rg -l -i "token|password|secret|tls" . \
+  --glob '!data/**' --glob '!bin/**' --glob '!dist/**' --glob '!reports/**' --glob '!*.sum'
 ```
 
-Confirm defaults and variable names match across code, CLI help, and docs. Ensure
-examples do not commit real secrets and token files are documented as private.
+Confirm defaults and variable names match across code, CLI help, and docs. For
+secret scans, open only the smallest relevant snippets and redact values in notes;
+do not paste matched lines that may contain credentials. Ensure examples do not
+commit real secrets and token files are documented as private.
 
 ### 5. Security (SEC)
 
@@ -153,12 +159,14 @@ Focus-read auth, login guard, tokens, config, and center routes:
 
 ```sh
 grep -RniE "Authorization|Bearer|Set-Cookie|HttpOnly|SameSite|X-Forwarded-For|MaxBytesReader|ReadTimeout|WriteTimeout|Retry-After" internal --include='*.go'
-grep -RniE "log.*Authorization|password|token" internal cmd --include='*.go'
+rg -n -i "log.*Authorization" internal cmd --glob '*.go'
+rg -l -i "password|token|secret" internal cmd --glob '*.go'
 ```
 
 Confirm `Authorization` is not logged, token fingerprints do not reveal bearer
 secrets, source-IP lockout is not keyed by username, and request bodies/timeouts
-are bounded.
+are bounded. When investigating password/token matches, report behavior and file
+paths only; do not copy literal secret-like values into the report or final answer.
 
 SEC requires at least two `read_file` citations and at least one **negative check**: try
 to disprove a guarantee (e.g. unauth route access, spoofed `X-Forwarded-For` from an
@@ -208,8 +216,8 @@ Use `report-template.md` from this skill directory. Write a timestamped report:
 - `reports/<YYYYMMDD-HHMMSS>-project-audit.md`
 
 Before writing, list existing `reports/` files and flag duplicates or noise from prior
-runs in the report; do not silently add to a pile. If `reports/` is not gitignored, add it
-to `.gitignore` before the audit or fall back to `/tmp` and state that explicitly. After
+runs in the report; do not silently add to a pile. If `reports/` is not already ignored,
+do not edit `.gitignore` during the audit; write to `/tmp` and state that explicitly. After
 writing, run:
 
 ```sh
