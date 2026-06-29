@@ -140,6 +140,10 @@ tested:
 - **Telemetry ingest and idempotent storage.** `POST /telemetry` ingests `status` heartbeats and
   `audit_batch`; de-duplicates on the `{file_gen, byte_to}` idempotency cursor, stores append-only,
   and replays on startup (`internal/center`, `internal/store`).
+- **Audit retention window and gap visibility.** The center keeps a configurable recent audit window
+  per node for API/dashboard reads (`SCOOTSHIP_AUDIT_RETENTION_EVENTS`) while preserving accepted
+  events in the append-only JSONL log; retention overflow is surfaced as an explicit center-side
+  `audit_gap` in node lifecycle state (`internal/store`, `internal/center`, `internal/web`).
 - **Node registry and token auth.** Per-node bearer-token auth; a token may only ever speak for its
   own `node_id`; the dashboard exposes read-only token inventory metadata (source, fingerprint,
   last authentication) without displaying bearer secrets (`internal/tokens`, `internal/center`).

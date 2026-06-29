@@ -19,6 +19,7 @@ type settingsPage struct {
 	Tokens    int
 	Nodes     int
 	Center    []settingsRow
+	Audit     []settingsRow
 	Security  []settingsRow
 }
 
@@ -47,6 +48,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			{Key: tr(lang, "settings.stale_after"), Value: fmt.Sprintf("%ds", s.cfg.StaleSeconds)},
 			{Key: tr(lang, "settings.max_telemetry_body"), Value: humanBytes(s.cfg.MaxTelemetryByte)},
 			{Key: tr(lang, "settings.dev_mode"), Value: onOff(lang, s.cfg.Dev), Warn: s.cfg.Dev},
+		},
+		Audit: []settingsRow{
+			{Key: tr(lang, "settings.audit_retention_events"), Value: fmt.Sprintf("%d", s.cfg.AuditRetentionEvents)},
+			{Key: tr(lang, "settings.audit_durable_store"), Value: tr(lang, "settings.audit_append_only_jsonl")},
+			{Key: tr(lang, "settings.audit_gap_behavior"), Value: tr(lang, "settings.audit_gap_explicit")},
 		},
 		Security: []settingsRow{
 			{Key: tr(lang, "settings.login_max_fails"), Value: fmt.Sprintf("%d", s.cfg.LoginMaxFails)},

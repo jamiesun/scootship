@@ -11,18 +11,35 @@ import "github.com/jamiesun/scootship/internal/protocol"
 
 // NodeView is the center's current picture of one node.
 type NodeView struct {
-	NodeID        string                   `json:"node_id"`
-	FirstSeenMS   int64                    `json:"first_seen_ms"`
-	LastSeenMS    int64                    `json:"last_seen_ms"` // center receive time
-	LastSentTS    int64                    `json:"last_sent_ts"` // edge sent_ts
-	ScootVersion  string                   `json:"scoot_version"`
-	EdgeVersion   string                   `json:"edge_version"`
-	Daemon        protocol.DaemonStatus    `json:"daemon"`
-	PolicyCeiling string                   `json:"policy_ceiling"`
-	AuditStats    protocol.AuditStats      `json:"audit_stats"`
-	Descriptor    *protocol.NodeDescriptor `json:"descriptor,omitempty"`
-	Cursor        protocol.Cursor          `json:"cursor"`       // last durably stored audit range
-	AuditStored   int                      `json:"audit_stored"` // events stored at the center
+	NodeID         string                   `json:"node_id"`
+	FirstSeenMS    int64                    `json:"first_seen_ms"`
+	LastSeenMS     int64                    `json:"last_seen_ms"` // center receive time
+	LastSentTS     int64                    `json:"last_sent_ts"` // edge sent_ts
+	ScootVersion   string                   `json:"scoot_version"`
+	EdgeVersion    string                   `json:"edge_version"`
+	Daemon         protocol.DaemonStatus    `json:"daemon"`
+	PolicyCeiling  string                   `json:"policy_ceiling"`
+	AuditStats     protocol.AuditStats      `json:"audit_stats"`
+	Descriptor     *protocol.NodeDescriptor `json:"descriptor,omitempty"`
+	Cursor         protocol.Cursor          `json:"cursor"`       // last durably stored audit range
+	AuditStored    int                      `json:"audit_stored"` // events accepted into the append-only log
+	AuditLifecycle AuditLifecycle           `json:"audit_lifecycle"`
+}
+
+// AuditLifecycle reports the center-side retention state for a node's audit
+// bodies. The append-only JSONL log remains the durable source of accepted audit
+// events; these fields describe the bounded in-memory/dashboard window and any
+// explicit audit_gap created by trimming that window.
+type AuditLifecycle struct {
+	RetentionEvents   int    `json:"retention_events"`
+	RetainedEvents    int    `json:"retained_events"`
+	GapCount          int    `json:"gap_count"`
+	DroppedEvents     int    `json:"dropped_events"`
+	OldestRetainedSeq uint64 `json:"oldest_retained_seq"`
+	NewestRetainedSeq uint64 `json:"newest_retained_seq"`
+	LastGapRecvMS     int64  `json:"last_gap_recv_ms,omitempty"`
+	LastGapKind       string `json:"last_gap_kind,omitempty"`
+	LastGapReason     string `json:"last_gap_reason,omitempty"`
 }
 
 // StoredAudit is one ingested audit event tagged with its node and receive time.

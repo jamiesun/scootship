@@ -33,6 +33,15 @@
     </section>
 
     <section class="card">
+      <h3>{{t .Lang "settings.audit_lifecycle"}} <span class="muted">({{t .Lang "settings.audit_note"}})</span></h3>
+      <table class="kv">
+        {{range .Audit}}
+        <tr><td>{{.Key}}</td><td>{{.Value}}</td></tr>
+        {{end}}
+      </table>
+    </section>
+
+    <section class="card">
       <h3>{{t .Lang "settings.login_protection"}} <span class="muted">({{t .Lang "settings.source_ip"}})</span></h3>
       <table class="kv">
         {{range .Security}}

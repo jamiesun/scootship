@@ -97,6 +97,55 @@ func TestIngestAuditIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAuditRetentionGapIsExplicit(t *testing.T) {
+	m, err := OpenWithOptions("", Options{AuditRetentionEvents: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteFrom: 0, ByteTo: 300, SeqTo: 3},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 1, Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 2, Kind: "tool_call", Msg: "grep"},
+			{Seq: 2, TS: 3, Kind: "final", Msg: "done"},
+		},
+	}
+	if _, n, err := m.IngestAudit("n-1", 3000, batch); err != nil || n != 3 {
+		t.Fatalf("ingest stored=%d err=%v", n, err)
+	}
+	got, ok := m.Node("n-1")
+	if !ok {
+		t.Fatal("node not registered")
+	}
+	if got.AuditStored != 3 {
+		t.Fatalf("AuditStored = %d, want accepted 3", got.AuditStored)
+	}
+	lc := got.AuditLifecycle
+	if lc.RetentionEvents != 2 || lc.RetainedEvents != 2 || lc.GapCount != 1 || lc.DroppedEvents != 1 {
+		t.Fatalf("unexpected lifecycle: %+v", lc)
+	}
+	if lc.LastGapKind != "audit_gap" || lc.LastGapReason != "retention_limit" || lc.LastGapRecvMS != 3000 {
+		t.Fatalf("gap not explicit: %+v", lc)
+	}
+	if lc.OldestRetainedSeq != 1 || lc.NewestRetainedSeq != 2 {
+		t.Fatalf("retained range = %d..%d, want 1..2", lc.OldestRetainedSeq, lc.NewestRetainedSeq)
+	}
+	events := m.AuditEvents("n-1", 0)
+	if len(events) != 2 || events[0].Event.Seq != 2 || events[1].Event.Seq != 1 {
+		t.Fatalf("retained events newest-first wrong: %+v", events)
+	}
+
+	if _, n, err := m.IngestAudit("n-1", 3001, batch); err != nil || n != 0 {
+		t.Fatalf("duplicate ingest stored=%d err=%v", n, err)
+	}
+	after, _ := m.Node("n-1")
+	if after.AuditLifecycle.GapCount != 1 || after.AuditLifecycle.DroppedEvents != 1 {
+		t.Fatalf("duplicate changed lifecycle gap: %+v", after.AuditLifecycle)
+	}
+}
+
 func TestReplayRebuildsState(t *testing.T) {
 	dir := t.TempDir()
 
@@ -135,5 +184,42 @@ func TestReplayRebuildsState(t *testing.T) {
 	}
 	if _, err := filepath.Abs(dir); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReplayRebuildsAuditRetentionGap(t *testing.T) {
+	dir := t.TempDir()
+
+	m, err := OpenWithOptions(dir, Options{AuditRetentionEvents: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.IngestAudit("n-1", 3000, protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 200, SeqTo: 2},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 1, Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 2, Kind: "final", Msg: "done"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	m2, err := OpenWithOptions(dir, Options{AuditRetentionEvents: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m2.Close()
+	got, ok := m2.Node("n-1")
+	if !ok {
+		t.Fatal("node lost after replay")
+	}
+	if got.AuditStored != 2 || got.AuditLifecycle.RetainedEvents != 1 || got.AuditLifecycle.DroppedEvents != 1 {
+		t.Fatalf("retention gap not rebuilt after replay: %+v", got)
+	}
+	if events := m2.AuditEvents("n-1", 0); len(events) != 1 || events[0].Event.Seq != 1 {
+		t.Fatalf("retained replay events wrong: %+v", events)
 	}
 }

@@ -66,7 +66,7 @@ archives with checksums.
 | --- | --- |
 | `cmd/scootship/main.go` | CLI: `serve`, `mock-edge`, `version`; env-driven startup; signal-based shutdown. |
 | `internal/protocol` | The frozen scoot-edge v1 contract: envelope, status/audit/job bodies, idempotency cursor. The narrowest, most stable surface — change only to track EDGE.md. |
-| `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, in-memory fleet index. |
+| `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, bounded dashboard audit window, and explicit retention gaps. |
 | `internal/tokens` | Per-node bearer-token registry. The center's node auth surface; **not** node policy config. |
 | `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |

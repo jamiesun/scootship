@@ -12,10 +12,21 @@ import (
 	"github.com/jamiesun/scootship/internal/protocol"
 )
 
-// maxAuditInMemory caps how many recent audit events are retained per node in
-// memory. All accepted events are persisted to the JSONL log regardless; this
-// only bounds the in-memory ring used by the dashboard.
-const maxAuditInMemory = 1000
+const (
+	// DefaultAuditRetentionEvents caps how many recent audit events are retained
+	// per node in memory for API/dashboard reads. All accepted events are still
+	// persisted to the append-only JSONL log before they are acked.
+	DefaultAuditRetentionEvents = 1000
+	auditGapKind                = "audit_gap"
+	auditGapReasonRetention     = "retention_limit"
+)
+
+// Options controls the center-side in-memory index. It does not weaken the
+// append-only durability contract: acked audit ranges are always written to the
+// JSONL log first.
+type Options struct {
+	AuditRetentionEvents int
+}
 
 // persistRecord is one line in the append-only log. Exactly one payload field is
 // set per record, selected by Rec.
@@ -43,10 +54,11 @@ type nodeState struct {
 
 // Mem is an in-memory fleet view backed by an append-only JSONL log.
 type Mem struct {
-	mu    sync.Mutex
-	nodes map[string]*nodeState
-	file  *os.File
-	w     *bufio.Writer
+	mu      sync.Mutex
+	nodes   map[string]*nodeState
+	file    *os.File
+	w       *bufio.Writer
+	options Options
 }
 
 var _ Store = (*Mem)(nil)
@@ -55,7 +67,12 @@ var _ Store = (*Mem)(nil)
 // existing log to rebuild the fleet view. Pass an empty dataDir for a purely
 // in-memory store (used by tests).
 func Open(dataDir string) (*Mem, error) {
-	m := &Mem{nodes: make(map[string]*nodeState)}
+	return OpenWithOptions(dataDir, Options{})
+}
+
+// OpenWithOptions is Open plus explicit store retention settings.
+func OpenWithOptions(dataDir string, opts Options) (*Mem, error) {
+	m := &Mem{nodes: make(map[string]*nodeState), options: normalizeOptions(opts)}
 	if dataDir == "" {
 		return m, nil
 	}
@@ -73,6 +90,13 @@ func Open(dataDir string) (*Mem, error) {
 	m.file = f
 	m.w = bufio.NewWriter(f)
 	return m, nil
+}
+
+func normalizeOptions(opts Options) Options {
+	if opts.AuditRetentionEvents <= 0 {
+		opts.AuditRetentionEvents = DefaultAuditRetentionEvents
+	}
+	return opts
 }
 
 func (m *Mem) replay(path string) error {
@@ -123,7 +147,12 @@ func (m *Mem) applyRecord(rec persistRecord) {
 func (m *Mem) node(nodeID string) *nodeState {
 	ns := m.nodes[nodeID]
 	if ns == nil {
-		ns = &nodeState{view: NodeView{NodeID: nodeID}}
+		ns = &nodeState{view: NodeView{
+			NodeID: nodeID,
+			AuditLifecycle: AuditLifecycle{
+				RetentionEvents: m.options.AuditRetentionEvents,
+			},
+		}}
 		m.nodes[nodeID] = ns
 	}
 	return ns
@@ -158,15 +187,38 @@ func (m *Mem) applyAudit(nodeID string, recvMS int64, cursor protocol.Cursor, ev
 	for _, ev := range events {
 		ns.audits = append(ns.audits, StoredAudit{NodeID: nodeID, RecvMS: recvMS, Event: ev})
 	}
-	if len(ns.audits) > maxAuditInMemory {
-		ns.audits = ns.audits[len(ns.audits)-maxAuditInMemory:]
-	}
+	m.applyAuditRetention(ns, recvMS)
 	ns.view.Cursor = cursor
 	ns.view.AuditStored += len(events)
 	if recvMS > ns.view.LastSeenMS {
 		ns.view.LastSeenMS = recvMS
 	}
 	return len(events)
+}
+
+func (m *Mem) applyAuditRetention(ns *nodeState, recvMS int64) {
+	limit := m.options.AuditRetentionEvents
+	if limit <= 0 {
+		limit = DefaultAuditRetentionEvents
+	}
+	lc := &ns.view.AuditLifecycle
+	lc.RetentionEvents = limit
+	if len(ns.audits) > limit {
+		dropped := len(ns.audits) - limit
+		ns.audits = ns.audits[dropped:]
+		lc.GapCount++
+		lc.DroppedEvents += dropped
+		lc.LastGapRecvMS = recvMS
+		lc.LastGapKind = auditGapKind
+		lc.LastGapReason = auditGapReasonRetention
+	}
+	lc.RetainedEvents = len(ns.audits)
+	lc.OldestRetainedSeq = 0
+	lc.NewestRetainedSeq = 0
+	if len(ns.audits) > 0 {
+		lc.OldestRetainedSeq = ns.audits[0].Event.Seq
+		lc.NewestRetainedSeq = ns.audits[len(ns.audits)-1].Event.Seq
+	}
 }
 
 func (m *Mem) applyJobEvent(nodeID string, recvMS int64, _ protocol.JobEventBody) {

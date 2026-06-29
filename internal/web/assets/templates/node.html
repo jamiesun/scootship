@@ -29,6 +29,23 @@
       </div>
 
       <div class="card">
+        <h3>{{t .Lang "node.audit_lifecycle"}} <span class="muted">({{t .Lang "node.center_retention"}})</span></h3>
+        <table class="kv">
+          <tr><td>{{t .Lang "node.audit_accepted"}}</td><td class="num-col">{{.Node.AuditStored}}</td></tr>
+          <tr><td>{{t .Lang "node.audit_retained"}}</td><td class="num-col">{{.Node.AuditLifecycle.RetainedEvents}}</td></tr>
+          <tr><td>{{t .Lang "node.audit_retention_limit"}}</td><td class="num-col">{{.Node.AuditLifecycle.RetentionEvents}}</td></tr>
+          <tr><td>{{t .Lang "node.audit_gap_count"}}</td><td class="num-col {{if .Node.AuditLifecycle.GapCount}}warn{{end}}">{{.Node.AuditLifecycle.GapCount}}</td></tr>
+          <tr><td>{{t .Lang "node.audit_dropped"}}</td><td class="num-col {{if .Node.AuditLifecycle.DroppedEvents}}warn{{end}}">{{.Node.AuditLifecycle.DroppedEvents}}</td></tr>
+        </table>
+        {{if .Node.AuditLifecycle.GapCount}}
+          <p class="audit-gap warn">{{tf .Lang "node.audit_gap_detail" .Node.AuditLifecycle.LastGapKind .Node.AuditLifecycle.LastGapReason .AuditGapAgo}}</p>
+          <p class="muted">{{tf .Lang "node.audit_retained_range" .Node.AuditLifecycle.OldestRetainedSeq .Node.AuditLifecycle.NewestRetainedSeq}}</p>
+        {{else}}
+          <p class="muted">{{t .Lang "node.audit_gap_clear"}}</p>
+        {{end}}
+      </div>
+
+      <div class="card">
         <h3>{{t .Lang "node.capability_descriptor"}} <span class="muted">({{t .Lang "node.advisory"}})</span></h3>
         {{with .Node.Descriptor}}
           {{if .Labels}}<p class="tags">{{range .Labels}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}

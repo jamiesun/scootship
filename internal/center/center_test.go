@@ -23,17 +23,18 @@ import (
 
 func defaultCfg() config.Config {
 	return config.Config{
-		Addr:             ":0",
-		AdminUser:        "admin",
-		AdminPassword:    "testpass", // a real login is required for the dashboard
-		StaleSeconds:     90,
-		MaxTelemetryByte: 8 << 20,
+		Addr:                 ":0",
+		AdminUser:            "admin",
+		AdminPassword:        "testpass", // a real login is required for the dashboard
+		StaleSeconds:         90,
+		MaxTelemetryByte:     8 << 20,
+		AuditRetentionEvents: 1000,
 	}
 }
 
 func newServer(t *testing.T, cfg config.Config) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open("") // in-memory
+	st, err := store.OpenWithOptions("", store.Options{AuditRetentionEvents: cfg.AuditRetentionEvents}) // in-memory
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +161,61 @@ func TestTelemetryFlow(t *testing.T) {
 	_ = json.Unmarshal(body, &ack)
 	if ack.AuditStored != 0 {
 		t.Fatalf("duplicate audit stored %d, want 0", ack.AuditStored)
+	}
+}
+
+func TestDashboardAuditLifecycleGapVisible(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuditRetentionEvents = 2
+	ts, _ := newServer(t, cfg)
+
+	batch := protocol.AuditBatchBody{
+		Cursor: protocol.Cursor{FileGen: 1, ByteTo: 300, SeqTo: 3},
+		Events: []protocol.AuditEvent{
+			{Seq: 0, TS: 1, Kind: "run", Msg: "start"},
+			{Seq: 1, TS: 2, Kind: "tool_call", Msg: "grep"},
+			{Seq: 2, TS: 3, Kind: "final", Msg: "done"},
+		},
+	}
+	resp, body := postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeAuditBatch, "n-1", batch))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("audit status=%d body=%s", resp.StatusCode, body)
+	}
+
+	client := loginClient(t, ts.URL)
+	api := getJSON(t, client, ts.URL+"/api/nodes/n-1")
+	node, ok := api["node"].(map[string]any)
+	if !ok {
+		t.Fatalf("node missing from API: %v", api)
+	}
+	lifecycle, ok := node["audit_lifecycle"].(map[string]any)
+	if !ok {
+		t.Fatalf("audit lifecycle missing from API node: %v", node)
+	}
+	if lifecycle["last_gap_kind"] != "audit_gap" || lifecycle["last_gap_reason"] != "retention_limit" {
+		t.Fatalf("gap details not explicit in API: %v", lifecycle)
+	}
+
+	resp, err := client.Get(ts.URL + "/nodes/n-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	pageText := string(page)
+	if !strings.Contains(pageText, "Audit Lifecycle") || !strings.Contains(pageText, "audit_gap") || !strings.Contains(pageText, "retention_limit") {
+		t.Fatalf("node page missing English lifecycle gap: %s", pageText)
+	}
+
+	resp, err = client.Get(ts.URL + "/settings?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	settingsText := string(settings)
+	if !strings.Contains(settingsText, "审计生命周期") || !strings.Contains(settingsText, "每节点保留事件数") {
+		t.Fatalf("settings page missing Chinese audit lifecycle: %s", settingsText)
 	}
 }
 

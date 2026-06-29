@@ -465,6 +465,16 @@ td.warn,
 .num-col.warn {
     color: var(--warn);
 }
+.audit-gap {
+    margin: 12px 0 6px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: rgba(224, 164, 88, 0.12);
+    border: 1px solid rgba(224, 164, 88, 0.3);
+}
+.audit-gap.warn {
+    color: var(--warn);
+}
 
 .ceiling {
     font-family: var(--mono);

@@ -48,6 +48,7 @@ type nodePage struct {
 	Node        store.NodeView
 	Online      bool
 	LastSeenAgo string
+	AuditGapAgo string
 	Audits      []store.StoredAudit
 }
 
@@ -121,6 +122,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		Node:        n,
 		Online:      s.online(n.LastSeenMS),
 		LastSeenAgo: s.agoLang(lang, n.LastSeenMS),
+		AuditGapAgo: s.agoLang(lang, n.AuditLifecycle.LastGapRecvMS),
 		Audits:      s.store.AuditEvents(id, 100),
 	}
 	s.render(w, "node", page)
