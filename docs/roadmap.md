@@ -4,8 +4,9 @@
 
 > This document defines what Scootship "should become, and must never become" — the North Star
 > and the guardrails for all subsequent development.
-> It describes goals and boundaries, not concrete construction steps; unless a technical choice
-> is listed as a hard boundary, it is only a suggestion, and the decision is left to the implementer.
+> It describes goals and boundaries, not concrete construction steps. Technical choices are
+> suggestions unless they are explicitly tied to the hard boundaries below. Security, protocol,
+> dispatch, storage, and delivery boundaries are not implementation preferences; they are gates.
 
 ## Overview
 
@@ -100,17 +101,19 @@ Once done, Scootship should look like this:
   (1) the Scoot run audit ingested from the fleet, enough to replay line by line what an agent
   actually did; (2) the center's own dispatch provenance (who, when, which goal, under what
   `effective_policy`, to which node — joined back to Scoot's run audit by `session_id`).
-- **Simple over fancy.** Pick **one** low-complexity frontend approach for the admin dashboard
-  (suggested: Go templates + HTMX/Alpine — no build step, embed-friendly; a tiny pre-compiled SPA
-  is also acceptable). Don't chase a full component library or flashy interactions.
+- **Simple over fancy.** Pick **one** low-complexity frontend approach for the admin dashboard.
+  The default is Go templates plus minimal static JavaScript/CSS from `embed.FS`. A pre-compiled
+  SPA is acceptable only if its build is reproducible, dependency-locked, embedded into the same
+  binary, free of runtime CDN/external asset dependencies, and does not turn CI or releases into a
+  separate frontend product. Don't chase a full component library or flashy interactions.
 - **Data sensitivity is taken seriously.** `audit_batch` may carry file contents, command output,
   and HTTP response bodies — once enabled, the center becomes a sink for potentially sensitive
   observation data. The center must do its own login authentication and action authorization for
   dashboard access, and have a retention / cleanup policy for stored audit data.
-- **Operational trust comes before remote orchestration.** The center should not grow into E2 job
-  dispatch until E1 is credible in production: production/dev transport boundaries are explicit,
-  deployment and recovery are documented, audit lifecycle and gaps are visible, node auth can be
-  governed, and health signals are clear on the dashboard.
+- **Operational trust comes before remote orchestration.** The center must not grow into E2 job
+  dispatch until the E2 dispatch gate is fully satisfied: production/dev transport boundaries are
+  tested, deployment and recovery are documented, audit lifecycle and gaps are implemented, node auth
+  can be governed, and health signals are clear on the dashboard.
 
 Priorities when qualities conflict (highest to lowest):
 
@@ -166,8 +169,8 @@ observation-period stub today — it authenticates per the contract but dispatch
 
 ## Non-goals (hard rules)
 
-Unless the boundary is explicitly changed in this document, all of the following are hard rules
-that must not be crossed:
+Unless the boundary is explicitly changed through the gate below, all of the following are hard
+rules that must not be crossed:
 
 - **Do not configure or modify Scoot's local execution policy / permission ceiling.** The
   `guarded/readonly/unrestricted` ceiling is each machine's **local** opt-in. When dispatching,
@@ -196,6 +199,23 @@ that must not be crossed:
   fleet only through the public `scoot-edge` protocol surface; it does not depend on Scoot's
   internal implementation details or require Scoot to expose private subsystems.
 
+### Boundary change gate
+
+Changing any hard rule above is not a normal documentation edit. A boundary change is valid only
+when all of these are true in the same change set:
+
+- the owner explicitly approves the new boundary and the reason it is worth the added authority;
+- the corresponding Scoot `EDGE.md` contract is updated first or in lockstep, with no private
+  Scoot internals becoming a Scootship dependency;
+- the change includes a focused threat-model note covering abuse paths, rollback, and operator
+  recovery;
+- tests or CI checks prove the old unsafe path is still absent unless the new boundary deliberately
+  permits it;
+- both English and Chinese roadmap / agent docs are updated together.
+
+If any item is missing, agents must treat the existing non-goal as still binding and stop rather
+than widening scope by interpretation.
+
 ## Direction and intent
 
 > The user organized requirements by "phase", so the directions below align with `scoot-edge`'s
@@ -212,7 +232,9 @@ tightly defended inbound surface".
   ignore unknown fields, reject an unknown major version.
 - **Mock edge harness.** Because a real `scoot-edge` does not exist yet, Scootship must be
   developable and verifiable without a real edge: a test edge that can simulate node heartbeats,
-  capability descriptors, and `audit_batch` reporting, and can lease / report jobs.
+  capability descriptors, and `audit_batch` reporting. In Phase 1, lease polling verifies only the
+  authenticated empty-dispatch contract (`X-Scootship-Dispatch: disabled-phase1`); real job
+  lifecycle simulation belongs to E2 after the dispatch gate is satisfied.
 - **Node registry and token governance.** The center issues, stores (securely), recognizes,
   rate-limits, and revokes **per-node** tokens — this is the center's own governance surface,
   distinct from "Scoot permission config", and does not violate the hard rules above.
@@ -263,8 +285,26 @@ center's authority.
 
 Serves the portrait "dispatch is traceable" and the hard rules "the center does not raise the local
 ceiling / does not execute raw commands". This phase is deliberately gated: keep `/jobs/lease` as an
-authenticated empty-dispatch stub until the E1 operational maturity package is credible and the Scoot
-side has landed the corresponding unattended readonly clamp.
+authenticated empty-dispatch stub until every dispatch gate below is satisfied and the Scoot side has
+landed the corresponding unattended readonly clamp.
+
+The E2 dispatch gate is all-or-nothing. Do not expose partial dispatch UI/API, hidden feature flags,
+or "admin-only" bypasses until these conditions are met:
+
+- E1 transport behavior is tested for direct TLS, trusted TLS proxy, explicit dev mode, and fail-closed
+  plain HTTP.
+- Deployment, backup, restore, data-directory permissions, token-file permissions, and recovery
+  procedures are documented for a real operator.
+- Audit retention, capacity limit, and explicit `audit_gap` behavior exist in code and tests.
+- Token create / rotate / revoke flows are implemented with e2e or integration coverage.
+- Run audit timeline views can correlate `session_id`, `run_id`, `seq`, and `ts` without raw JSONL
+  spelunking.
+- Read-only health signals for offline nodes, version drift, policy-deny spikes, audit stalls, and
+  duplicate reporting are visible before notification or remediation is added.
+- Scoot has shipped the unattended readonly clamp and the compatible `scoot-edge` contract version is
+  named in the Scootship change.
+- A dispatch threat-model note covers queue abuse, replay/idempotency, capability spoofing,
+  authorization, audit provenance, and rollback.
 
 - **Long-poll-based job dispatch.** Implement the center-side semantics of
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
@@ -280,8 +320,8 @@ side has landed the corresponding unattended readonly clamp.
   back to the ingested Scoot run audit via `session_id`, forming an end-to-end traceable chain.
 - **E2 prerequisites are explicit.** Queue semantics, capability / label matching, `idem_key`
   idempotency, capacity backpressure, deadlines, `job_event` handling, dispatch provenance, and the
-  Scoot-side unattended readonly clamp must exist as a coherent design before any partial dispatch UI
-  or API is exposed.
+  Scoot-side unattended readonly clamp must exist as code plus tests, not just prose, before any
+  partial dispatch UI or API is exposed.
 
 ### Phase 3 · Governance and operational scale
 
@@ -302,17 +342,17 @@ taken seriously" after the E1 maturity baseline is in place.
 > implementer in practice.
 
 - **Protocol integration is real and verifiable.** Even before a real `scoot-edge` ships, Scootship
-  can use its built-in mock edge to run the full "heartbeat → ingest → visible on dashboard" and
-  "lease job → report lifecycle" paths, with automated tests guarding this core data flow.
+  can use its built-in mock edge to run the full "heartbeat → ingest → visible on dashboard" path and
+  the Phase 1 "authenticated lease poll → empty dispatch" path, with automated tests guarding this
+  core data flow. Real "lease job → report lifecycle" verification is an E2-only completion signal.
 - **Observation is one glance away.** Without querying a database, an operator sees fleet online
   status, versions, policy ceilings, and audit stats on the dashboard; a new node appears in the
   registry automatically after it reports.
 - **Ingest is lossless and dup-free.** A re-delivered `audit_batch` range is a no-op; the cursor
   advances only after the center acks; exceeding the retention cap produces an explicit `audit_gap`
   marker rather than a silent loss.
-- **E1 is production-credible before E2.** Production/dev transport behavior is explicit, deployment
-  and restore guidance exists, edge endpoint limits are visible, audit retention/gap behavior is
-  operator-understandable, and health signals surface on the dashboard before remote dispatch grows.
+- **E1 is production-credible before E2.** The E2 dispatch gate above is fully checked off with code,
+  tests, and operator documentation before remote dispatch grows.
 - **Boundaries hold automatically.** Any path that tries to "raise a node's local policy ceiling",
   "write back Scoot's local state", "run raw commands on a node", or "reverse-connect into the edge"
   does not exist by design; dispatch can only downgrade.
