@@ -215,6 +215,67 @@ func TestDashboardRequiresLogin(t *testing.T) {
 	}
 }
 
+func TestDashboardLanguageSwitch(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	resp, err := http.Get(ts.URL + "/login?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	bodyText := string(body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login lang page status=%d body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(bodyText, `<html lang="zh">`) || !strings.Contains(bodyText, "登录") {
+		t.Fatalf("login page did not render Chinese: %s", bodyText)
+	}
+	foundLangCookie := false
+	for _, c := range resp.Cookies() {
+		if c.Name == "scootship_lang" && c.Value == "zh" {
+			foundLangCookie = true
+		}
+	}
+	if !foundLangCookie {
+		t.Fatalf("language switch did not set zh cookie: %v", resp.Cookies())
+	}
+
+	client := loginClient(t, ts.URL)
+	resp, err = client.Get(ts.URL + "/?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	bodyText = string(body)
+	if !strings.Contains(bodyText, `<html lang="zh">`) || !strings.Contains(bodyText, "车队") || !strings.Contains(bodyText, "自动刷新") {
+		t.Fatalf("fleet page did not render Chinese: %s", bodyText)
+	}
+
+	resp, err = client.Get(ts.URL + "/tokens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	bodyText = string(body)
+	if !strings.Contains(bodyText, `<html lang="zh">`) || !strings.Contains(bodyText, "令牌") {
+		t.Fatalf("tokens page did not keep Chinese cookie: %s", bodyText)
+	}
+
+	resp, err = client.Get(ts.URL + "/?lang=en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	bodyText = string(body)
+	if !strings.Contains(bodyText, `<html lang="en">`) || !strings.Contains(bodyText, "Fleet") {
+		t.Fatalf("fleet page did not switch back to English: %s", bodyText)
+	}
+}
+
 func TestLoginRejectsBadCredentials(t *testing.T) {
 	ts, _ := newTestServer(t)
 	jar, _ := cookiejar.New(nil)

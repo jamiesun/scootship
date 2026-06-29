@@ -1,40 +1,40 @@
 {{define "operator_edit"}}{{template "header" .}}
-    <nav class="crumbs"><a href="/operators">operators</a> <span class="dot">/</span> <span>{{.Operator.Username}}</span></nav>
+    <nav class="crumbs"><a href="/operators">{{t .Lang "common.operators"}}</a> <span class="dot">/</span> <span>{{.Operator.Username}}</span></nav>
 
     <section class="page-head">
-      <h1>Operator <span class="pill ok">{{.Operator.Username}}</span></h1>
+      <h1>{{t .Lang "operators.title"}} <span class="pill ok">{{.Operator.Username}}</span></h1>
     </section>
 
     <section class="cols">
       <div class="card">
-        <h3>Basic Information</h3>
+        <h3>{{t .Lang "account.basic_information"}}</h3>
         {{if .Profile.OK}}<div class="form-ok">{{.Profile.OK}}</div>{{end}}
         {{if .Profile.Error}}<div class="form-error">{{.Profile.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/operators/{{.Operator.Username}}">
           <input type="hidden" name="action" value="profile">
-          <label>Display name
+          <label>{{t .Lang "common.display_name"}}
             <input name="display_name" value="{{.Operator.DisplayName}}" autocomplete="name">
           </label>
-          <label>Email
+          <label>{{t .Lang "common.email"}}
             <input name="email" type="email" value="{{.Operator.Email}}" autocomplete="email">
           </label>
-          <button type="submit">Save profile</button>
+          <button type="submit">{{t .Lang "account.save_profile"}}</button>
         </form>
       </div>
 
       <div class="card">
-        <h3>Reset Password</h3>
+        <h3>{{t .Lang "operators.reset_password"}}</h3>
         {{if .Password.OK}}<div class="form-ok">{{.Password.OK}}</div>{{end}}
         {{if .Password.Error}}<div class="form-error">{{.Password.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/operators/{{.Operator.Username}}">
           <input type="hidden" name="action" value="password">
-          <label>New password
+          <label>{{t .Lang "account.new_password"}}
             <input name="new_password" type="password" autocomplete="new-password" required>
           </label>
-          <label>Confirm new password
+          <label>{{t .Lang "account.confirm_new_password"}}
             <input name="confirm_password" type="password" autocomplete="new-password" required>
           </label>
-          <button type="submit">Reset password</button>
+          <button type="submit">{{t .Lang "operators.reset_password_action"}}</button>
         </form>
       </div>
     </section>

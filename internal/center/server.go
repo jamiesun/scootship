@@ -49,7 +49,13 @@ const (
 // New builds a center server. The dashboard templates are parsed once from the
 // embedded filesystem.
 func New(cfg config.Config, st store.Store, tk *tokens.Registry, ops *operators.Store, logger *slog.Logger) (*Server, error) {
-	tmpl, err := web.Templates(template.FuncMap{"trunc": trunc, "initial": initial})
+	tmpl, err := web.Templates(template.FuncMap{
+		"trunc":   trunc,
+		"initial": initial,
+		"t":       tr,
+		"tf":      trf,
+		"langURL": langURL,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +110,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/tokens", s.requireAdmin(http.HandlerFunc(s.handleAPITokens)))
 	mux.Handle("GET /api/operators", s.requireAdmin(http.HandlerFunc(s.handleAPIOperators)))
 
-	return s.securityHeaders(s.recoverPanic(s.logRequests(mux)))
+	return s.securityHeaders(s.recoverPanic(s.logRequests(languageMiddleware(mux))))
 }
 
 // Run serves until ctx is cancelled, then shuts down gracefully.

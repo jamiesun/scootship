@@ -240,6 +240,29 @@ code,
     border-color: rgba(229, 104, 122, 0.35);
     color: var(--danger);
 }
+.lang-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.lang-switch a {
+    color: var(--muted);
+    padding: 3px 5px;
+    border-radius: 6px;
+}
+.lang-switch a:hover {
+    background: var(--panel-2);
+    color: var(--fg);
+    text-decoration: none;
+}
+.lang-switch a.active {
+    color: var(--accent);
+    background: rgba(90, 169, 255, 0.12);
+}
 
 /* collapsed state (wide screens) */
 body.sidebar-collapsed .sidebar {
@@ -703,8 +726,12 @@ table.audit td {
 }
 .login-sub {
     color: var(--muted);
-    margin: 6px 0 18px;
+    margin: 6px 0 10px;
     font-size: 13px;
+}
+.login-lang {
+    justify-content: flex-start;
+    margin-bottom: 18px;
 }
 .login-card form {
     display: flex;

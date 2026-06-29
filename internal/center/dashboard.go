@@ -12,10 +12,12 @@ import (
 )
 
 type basePage struct {
-	Title   string
-	Version string
-	User    string // logged-in operator (for the sidebar)
-	Active  string // active sidebar item key
+	Title       string
+	Version     string
+	User        string // logged-in operator (for the sidebar)
+	Active      string // active sidebar item key
+	Lang        string
+	CurrentPath string
 }
 
 type nodeRow struct {
@@ -71,9 +73,10 @@ type tokensPage struct {
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	nodes := s.store.Nodes()
 	page := fleetPage{
-		basePage: basePage{Title: "Fleet", Version: version.Version, User: user, Active: "fleet"},
+		basePage: s.base(r, user, "fleet", "page.fleet"),
 		Addr:     s.cfg.Addr,
 		Total:    len(nodes),
 	}
@@ -94,7 +97,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			AuditRun:        n.AuditStats.Run,
 			AuditPolicyDeny: n.AuditStats.PolicyDeny,
 			AuditStored:     n.AuditStored,
-			LastSeenAgo:     s.ago(n.LastSeenMS),
+			LastSeenAgo:     s.agoLang(lang, n.LastSeenMS),
 		}
 		if n.Descriptor != nil {
 			row.Labels = n.Descriptor.Labels
@@ -106,6 +109,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	id := r.PathValue("id")
 	n, ok := s.store.Node(id)
 	if !ok {
@@ -113,10 +117,10 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := nodePage{
-		basePage:    basePage{Title: "node " + id, Version: version.Version, User: user, Active: "fleet"},
+		basePage:    s.baseTitle(r, user, "fleet", tr(lang, "fleet.node")+" "+id),
 		Node:        n,
 		Online:      s.online(n.LastSeenMS),
-		LastSeenAgo: s.ago(n.LastSeenMS),
+		LastSeenAgo: s.agoLang(lang, n.LastSeenMS),
 		Audits:      s.store.AuditEvents(id, 100),
 	}
 	s.render(w, "node", page)
@@ -146,9 +150,10 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
-	rows := s.tokenRows()
+	lang := requestLang(r)
+	rows := s.tokenRows(lang)
 	page := tokensPage{
-		basePage: basePage{Title: "Tokens", Version: version.Version, User: user, Active: "tokens"},
+		basePage: s.base(r, user, "tokens", "page.tokens"),
 		Total:    len(rows),
 		Rows:     rows,
 	}
@@ -166,11 +171,11 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPITokens(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"now_ms": s.now().UnixMilli(),
-		"tokens": s.tokenRows(),
+		"tokens": s.tokenRows("en"),
 	})
 }
 
-func (s *Server) tokenRows() []tokenRow {
+func (s *Server) tokenRows(lang string) []tokenRow {
 	nodes := map[string]store.NodeView{}
 	for _, n := range s.store.Nodes() {
 		nodes[n.NodeID] = n
@@ -184,16 +189,16 @@ func (s *Server) tokenRows() []tokenRow {
 			Fingerprint:          snap.Fingerprint,
 			Configured:           true,
 			LastAuthenticatedMS:  snap.LastAuthenticatedMS,
-			LastAuthenticatedAgo: "never",
-			LastSeenAgo:          "never",
+			LastAuthenticatedAgo: tr(lang, "common.never"),
+			LastSeenAgo:          tr(lang, "common.never"),
 		}
 		if snap.LastAuthenticatedMS != 0 {
-			row.LastAuthenticatedAgo = s.ago(snap.LastAuthenticatedMS)
+			row.LastAuthenticatedAgo = s.agoLang(lang, snap.LastAuthenticatedMS)
 		}
 		if n, ok := nodes[snap.NodeID]; ok {
 			row.KnownNode = true
 			row.Online = s.online(n.LastSeenMS)
-			row.LastSeenAgo = s.ago(n.LastSeenMS)
+			row.LastSeenAgo = s.agoLang(lang, n.LastSeenMS)
 		}
 		rows = append(rows, row)
 	}
@@ -201,6 +206,23 @@ func (s *Server) tokenRows() []tokenRow {
 }
 
 // --- view helpers ---
+
+func (s *Server) base(r *http.Request, user, active, titleKey string) basePage {
+	lang := requestLang(r)
+	return s.baseTitle(r, user, active, tr(lang, titleKey))
+}
+
+func (s *Server) baseTitle(r *http.Request, user, active, title string) basePage {
+	lang := requestLang(r)
+	return basePage{
+		Title:       title,
+		Version:     version.Version,
+		User:        user,
+		Active:      active,
+		Lang:        lang,
+		CurrentPath: r.URL.RequestURI(),
+	}
+}
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	s.renderStatus(w, http.StatusOK, name, data)
@@ -231,8 +253,12 @@ func (s *Server) online(lastSeenMS int64) bool {
 
 // ago humanizes how long since a Unix-millis timestamp.
 func (s *Server) ago(ms int64) string {
+	return s.agoLang("en", ms)
+}
+
+func (s *Server) agoLang(lang string, ms int64) string {
 	if ms == 0 {
-		return "never"
+		return tr(lang, "common.never")
 	}
 	d := s.now().Sub(time.UnixMilli(ms))
 	if d < 0 {
@@ -240,12 +266,24 @@ func (s *Server) ago(ms int64) string {
 	}
 	switch {
 	case d < time.Minute:
+		if lang == "zh" {
+			return fmt.Sprintf("%d 秒前", int(d.Seconds()))
+		}
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))
 	case d < time.Hour:
+		if lang == "zh" {
+			return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+		}
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
+		if lang == "zh" {
+			return fmt.Sprintf("%d 小时前", int(d.Hours()))
+		}
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	default:
+		if lang == "zh" {
+			return fmt.Sprintf("%d 天前", int(d.Hours()/24))
+		}
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }

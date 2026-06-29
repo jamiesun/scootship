@@ -1,23 +1,23 @@
 {{define "node"}}{{template "header" .}}
-    <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>{{.Node.NodeID}}</span></nav>
+    <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <span>{{.Node.NodeID}}</span></nav>
 
     <section class="page-head">
       <h1>{{.Node.NodeID}}
-        {{if .Online}}<span class="pill ok">online</span>{{else}}<span class="pill warn">stale</span>{{end}}
+        {{if .Online}}<span class="pill ok">{{t .Lang "fleet.online"}}</span>{{else}}<span class="pill warn">{{t .Lang "fleet.stale"}}</span>{{end}}
       </h1>
       <div class="kv-grid">
         <div><span class="k">scoot</span><span class="v">{{or .Node.ScootVersion "—"}}</span></div>
         <div><span class="k">edge</span><span class="v">{{or .Node.EdgeVersion "—"}}</span></div>
-        <div><span class="k">policy ceiling</span><span class="v"><span class="ceiling ceiling-{{.Node.PolicyCeiling}}">{{or .Node.PolicyCeiling "—"}}</span></span></div>
-        <div><span class="k">daemon</span><span class="v">{{or .Node.Daemon.State "—"}}{{if .Node.Daemon.CleanPrevStop}} <span class="muted">(clean prev stop)</span>{{end}}</span></div>
-        <div><span class="k">last seen</span><span class="v">{{.LastSeenAgo}}</span></div>
-        <div><span class="k">audit cursor</span><span class="v muted">gen {{.Node.Cursor.FileGen}} · byte {{.Node.Cursor.ByteTo}} · seq {{.Node.Cursor.SeqTo}}</span></div>
+        <div><span class="k">{{t .Lang "node.policy_ceiling"}}</span><span class="v"><span class="ceiling ceiling-{{.Node.PolicyCeiling}}">{{or .Node.PolicyCeiling "—"}}</span></span></div>
+        <div><span class="k">{{t .Lang "fleet.daemon"}}</span><span class="v">{{or .Node.Daemon.State "—"}}{{if .Node.Daemon.CleanPrevStop}} <span class="muted">({{t .Lang "node.clean_prev_stop"}})</span>{{end}}</span></div>
+        <div><span class="k">{{t .Lang "fleet.last_seen"}}</span><span class="v">{{.LastSeenAgo}}</span></div>
+        <div><span class="k">{{t .Lang "node.audit_cursor"}}</span><span class="v muted">gen {{.Node.Cursor.FileGen}} · byte {{.Node.Cursor.ByteTo}} · seq {{.Node.Cursor.SeqTo}}</span></div>
       </div>
     </section>
 
     <section class="cols">
       <div class="card">
-        <h3>Audit Stats <span class="muted">(derived counts from the node)</span></h3>
+        <h3>{{t .Lang "node.audit_stats"}} <span class="muted">({{t .Lang "node.derived_counts"}})</span></h3>
         <table class="kv">
           <tr><td>run</td><td class="num-col">{{.Node.AuditStats.Run}}</td></tr>
           <tr><td>tool_call</td><td class="num-col">{{.Node.AuditStats.ToolCall}}</td></tr>
@@ -29,7 +29,7 @@
       </div>
 
       <div class="card">
-        <h3>Capability Descriptor <span class="muted">(advisory, never authority)</span></h3>
+        <h3>{{t .Lang "node.capability_descriptor"}} <span class="muted">({{t .Lang "node.advisory"}})</span></h3>
         {{with .Node.Descriptor}}
           {{if .Labels}}<p class="tags">{{range .Labels}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
           <p class="muted">{{or .OS "?"}}/{{or .Arch "?"}}</p>
@@ -39,13 +39,13 @@
             {{if .Skills}}<p class="muted">skills: {{range .Skills}}<code>{{.}}</code> {{end}}</p>{{end}}
           {{end}}
         {{else}}
-          <p class="muted">No descriptor reported (capability reporting is off by default on the edge).</p>
+          <p class="muted">{{t .Lang "node.no_descriptor"}}</p>
         {{end}}
       </div>
     </section>
 
     <section class="card">
-      <h3>Recent Ingested Audit <span class="muted">({{len .Audits}} shown · newest first)</span></h3>
+      <h3>{{t .Lang "node.recent_audit"}} <span class="muted">({{tf .Lang "node.recent_audit_hint" (len .Audits)}})</span></h3>
       {{if .Audits}}
       <table class="audit">
         <thead><tr><th>seq</th><th>kind</th><th>session</th><th>msg</th></tr></thead>
@@ -61,8 +61,7 @@
         </tbody>
       </table>
       {{else}}
-      <p class="muted">No audit bodies ingested. Audit shipping is off by default on the edge;
-         only the <code>status</code> heartbeat (counts, never bodies) is sent until a node opts in.</p>
+      <p class="muted">{{t .Lang "node.no_audit"}}</p>
       {{end}}
     </section>
 {{template "footer" .}}{{end}}
