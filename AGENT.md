@@ -82,6 +82,7 @@ archives with checksums.
 | `.github/workflows` | CI and tag-driven release automation for cross-platform single-binary artifacts. |
 | `.agents/skills` | Project-local agent skills for release orchestration and whole-project audits. |
 | `docs/deployment.md` | Operator runbook for production transport modes, data permissions, backup, and recovery. |
+| `docs/dispatch-threat-model.md` | Pre-dispatch E2 threat model; a gate artifact, not implementation approval. |
 
 When adding a subsystem, prefer a new `internal/<name>` package with a focused interface over
 widening an existing one. Keep `internal/protocol` dependency-free.

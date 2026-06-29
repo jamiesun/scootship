@@ -151,7 +151,9 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
   center-managed per-node authentication tokens; secrets are never displayed, returned by APIs,
   logged, or audited.
 - **E2 (stubbed):** `GET /jobs/lease` authenticates and validates the node but dispatches nothing
-  in Phase 1.
+  in Phase 1. The pre-dispatch threat model is in
+  [`docs/dispatch-threat-model.md`](docs/dispatch-threat-model.md); it is a gate artifact, not
+  implementation approval.
 
 scootship talks only this contract; it does not depend on any Scoot internal.
 
