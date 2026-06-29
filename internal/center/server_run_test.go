@@ -28,30 +28,69 @@ import (
 func TestRunServesDirectTLS(t *testing.T) {
 	certPath, keyPath, roots := writeSelfSignedCert(t)
 	addr := freeLocalAddr(t)
+	srv := newRunTestServer(t, config.Config{
+		Addr:    addr,
+		TLSCert: certPath,
+		TLSKey:  keyPath,
+	})
+
+	runServerForTest(t, srv)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: roots},
+		},
+		Timeout: 2 * time.Second,
+	}
+	assertHealthz(t, client, "https://"+addr+"/healthz")
+}
+
+func TestRunServesPlainHTTPOnlyForExplicitModes(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.Config
+	}{
+		{name: "dev http", cfg: config.Config{Dev: true}},
+		{name: "trusted proxy http", cfg: config.Config{BehindTLSProxy: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr := freeLocalAddr(t)
+			tt.cfg.Addr = addr
+			srv := newRunTestServer(t, tt.cfg)
+			runServerForTest(t, srv)
+			assertHealthz(t, &http.Client{Timeout: 2 * time.Second}, "http://"+addr+"/healthz")
+		})
+	}
+}
+
+func newRunTestServer(t *testing.T, cfg config.Config) *center.Server {
+	t.Helper()
+	cfg.AdminUser = "admin"
+	cfg.AdminPassword = "testpass"
+	cfg.StaleSeconds = 90
+	cfg.MaxTelemetryByte = 8 << 20
+	cfg.AuditRetentionEvents = 1000
 
 	st, err := store.Open("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	ops, err := operators.Open("", "admin", "testpass", time.Now())
+	ops, err := operators.Open("", cfg.AdminUser, cfg.AdminPassword, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := center.New(config.Config{
-		Addr:                 addr,
-		TLSCert:              certPath,
-		TLSKey:               keyPath,
-		AdminUser:            "admin",
-		AdminPassword:        "testpass",
-		StaleSeconds:         90,
-		MaxTelemetryByte:     8 << 20,
-		AuditRetentionEvents: 1000,
-	}, st, tokens.New(map[string]string{"n-1": "secret"}), ops, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv, err := center.New(cfg, st, tokens.New(map[string]string{"n-1": "secret"}), ops, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return srv
+}
 
+func runServerForTest(t *testing.T, srv *center.Server) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Run(ctx) }()
@@ -66,16 +105,13 @@ func TestRunServesDirectTLS(t *testing.T) {
 			t.Fatal("server did not shut down")
 		}
 	})
+}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: roots},
-		},
-		Timeout: 2 * time.Second,
-	}
+func assertHealthz(t *testing.T, client *http.Client, url string) {
+	t.Helper()
 	var lastErr error
 	for i := 0; i < 20; i++ {
-		resp, err := client.Get("https://" + addr + "/healthz")
+		resp, err := client.Get(url)
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
@@ -90,7 +126,7 @@ func TestRunServesDirectTLS(t *testing.T) {
 		lastErr = err
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatalf("direct TLS server did not become ready: %v", lastErr)
+	t.Fatalf("server did not become ready at %s: %v", url, lastErr)
 }
 
 func freeLocalAddr(t *testing.T) string {
