@@ -179,7 +179,8 @@ tested:
   `.agents/skills`).
 
 Phase 2 (task orchestration and dispatch) is not implemented yet: `GET /jobs/lease` is an
-observation-period stub today — it authenticates per the contract but dispatches no jobs.
+observation-period stub today — it authenticates per the contract, validates the node and a bounded
+capacity request, but dispatches no jobs.
 
 > Note: this section records only what already exists. As each capability lands, move it here from
 > "Direction and intent" and cite its entry point or evidence path.
@@ -250,8 +251,9 @@ tightly defended inbound surface".
 - **Mock edge harness.** Because a real `scoot-edge` does not exist yet, Scootship must be
   developable and verifiable without a real edge: a test edge that can simulate node heartbeats,
   capability descriptors, and `audit_batch` reporting. In Phase 1, lease polling verifies only the
-  authenticated empty-dispatch contract (`X-Scootship-Dispatch: disabled-phase1`); real job
-  lifecycle simulation belongs to E2 after the dispatch gate is satisfied.
+  authenticated, node-bound, capacity-bounded empty-dispatch contract
+  (`X-Scootship-Dispatch: disabled-phase1`); real job lifecycle simulation belongs to E2 after the
+  dispatch gate is satisfied.
 - **Node registry and token governance.** The center creates, stores privately, recognizes, rotates,
   and revokes **per-node** authentication tokens — this is the center's own governance surface,
   distinct from "Scoot permission config", and does not violate the hard rules above.

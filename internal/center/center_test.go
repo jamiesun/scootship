@@ -831,6 +831,34 @@ func TestLeaseRejectsNodeMismatch(t *testing.T) {
 	assertJSONError(t, resp, body, http.StatusForbidden, "node_mismatch")
 }
 
+func TestLeaseRejectsInvalidQuery(t *testing.T) {
+	ts, _ := newTestServer(t)
+	tests := []struct {
+		name string
+		path string
+		code string
+	}{
+		{name: "missing node", path: "/jobs/lease?capacity=1", code: "missing_node"},
+		{name: "missing capacity", path: "/jobs/lease?node=n-1", code: "bad_capacity"},
+		{name: "non numeric capacity", path: "/jobs/lease?node=n-1&capacity=many", code: "bad_capacity"},
+		{name: "zero capacity", path: "/jobs/lease?node=n-1&capacity=0", code: "bad_capacity"},
+		{name: "excessive capacity", path: "/jobs/lease?node=n-1&capacity=65", code: "bad_capacity"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, ts.URL+tt.path, nil)
+			req.Header.Set("Authorization", "Bearer secret")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			assertJSONError(t, resp, body, http.StatusBadRequest, tt.code)
+		})
+	}
+}
+
 func TestTokenInventoryDoesNotExposeSecrets(t *testing.T) {
 	ts, _ := newTestServer(t)
 	status := protocol.StatusBody{ScootVersion: "0.9.0"}
