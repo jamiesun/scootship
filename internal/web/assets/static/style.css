@@ -503,7 +503,10 @@ pre {
     color: var(--border);
     margin: 0 4px;
 }
-.node-head h1 {
+.page-head {
+    margin-bottom: 18px;
+}
+.page-head h1 {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -547,6 +550,26 @@ pre {
 .card h3 {
     margin: 0 0 12px;
     font-size: 14px;
+}
+.link-card {
+    color: var(--fg);
+    display: block;
+    transition: border-color 0.12s ease;
+}
+.link-card:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+}
+.link-card h3 {
+    color: var(--fg);
+}
+.link-card p {
+    margin: 0 0 12px;
+}
+.link-count {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
 }
 .card table {
     border: none;

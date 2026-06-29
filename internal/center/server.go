@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /{$}", s.requireAdmin(http.HandlerFunc(s.handleFleet)))
 	mux.Handle("GET /nodes/{id}", s.requireAdmin(http.HandlerFunc(s.handleNode)))
 	mux.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.handleTokens)))
+	mux.Handle("GET /settings", s.requireAdmin(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("GET /account", s.requireAdmin(http.HandlerFunc(s.handleAccount)))
 	mux.Handle("POST /account", s.requireAdmin(http.HandlerFunc(s.handleAccountUpdate)))
 	mux.Handle("POST /account/password", s.requireAdmin(http.HandlerFunc(s.handleAccountPassword)))

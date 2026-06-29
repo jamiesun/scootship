@@ -51,7 +51,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "account", accountPage{
-		basePage: basePage{Title: "Account", Version: version.Version, User: user, Active: "settings"},
+		basePage: basePage{Title: "Account", Version: version.Version, User: user, Active: "account"},
 		Operator: op,
 	})
 }
@@ -100,7 +100,7 @@ func (s *Server) renderAccountMessage(w http.ResponseWriter, username string, pr
 		return
 	}
 	s.render(w, "account", accountPage{
-		basePage: basePage{Title: "Account", Version: version.Version, User: username, Active: "settings"},
+		basePage: basePage{Title: "Account", Version: version.Version, User: username, Active: "account"},
 		Operator: op,
 		Profile:  profile,
 		Password: password,

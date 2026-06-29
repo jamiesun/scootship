@@ -1,13 +1,13 @@
 {{define "account"}}{{template "header" .}}
     <nav class="crumbs"><a href="/">fleet</a> <span class="dot">/</span> <span>account</span></nav>
 
-    <section class="node-head">
+    <section class="page-head">
       <h1>Account <span class="pill ok">{{.Operator.Username}}</span></h1>
     </section>
 
     <section class="cols">
       <div class="card">
-        <h3>basic information</h3>
+        <h3>Basic Information</h3>
         {{if .Profile.OK}}<div class="form-ok">{{.Profile.OK}}</div>{{end}}
         {{if .Profile.Error}}<div class="form-error">{{.Profile.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/account">
@@ -22,7 +22,7 @@
       </div>
 
       <div class="card">
-        <h3>change password</h3>
+        <h3>Change Password</h3>
         {{if .Password.OK}}<div class="form-ok">{{.Password.OK}}</div>{{end}}
         {{if .Password.Error}}<div class="form-error">{{.Password.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/account/password">
