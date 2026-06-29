@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go format, vet, test, and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Format check
+        run: test -z "$(gofmt -l .)" || { echo "gofmt needed in:"; gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: CLI smoke
+        run: go run ./cmd/scootship version
+
+  release-smoke:
+    name: Release target smoke (${{ matrix.asset }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset: linux-amd64
+            goos: linux
+            goarch: amd64
+          - asset: linux-arm64
+            goos: linux
+            goarch: arm64
+          - asset: macos-arm64
+            goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile static release binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags "-s -w -X github.com/jamiesun/scootship/internal/version.Version=ci-smoke" -o bin/scootship-${{ matrix.asset }} ./cmd/scootship

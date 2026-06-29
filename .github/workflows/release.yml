@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset: linux-amd64
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            ext: ""
+          - asset: linux-arm64
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            ext: ""
+          - asset: linux-armv7
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            ext: ""
+          - asset: macos-amd64
+            goos: darwin
+            goarch: amd64
+            goarm: ""
+            ext: ""
+          - asset: macos-arm64
+            goos: darwin
+            goarch: arm64
+            goarm: ""
+            ext: ""
+          - asset: windows-amd64
+            goos: windows
+            goarch: amd64
+            goarm: ""
+            ext: ".exe"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve version
+        id: version
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v*) version="${GITHUB_REF_NAME#v}" ;;
+            *) version="0.1.0-dev" ;;
+          esac
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "archive_version=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          mkdir -p build
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/jamiesun/scootship/internal/version.Version=${{ steps.version.outputs.version }}" \
+            -o "build/scootship${{ matrix.ext }}" \
+            ./cmd/scootship
+
+      - name: Create archive
+        id: package
+        run: |
+          archive="scootship-${{ steps.version.outputs.archive_version }}-${{ matrix.asset }}.tar.gz"
+          mkdir -p dist/scootship
+          cp "build/scootship${{ matrix.ext }}" dist/scootship/
+          cp README.md LICENSE dist/scootship/
+          cp -R docs dist/scootship/docs
+          tar -C dist -czf "$archive" scootship
+          sha256sum "$archive" > "$archive.sha256"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${archive}.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scootship-${{ matrix.asset }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+
+      - name: Build release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          if [ -f CHANGELOG.md ] && awk -v v="$version" '
+              $0 ~ "^## \\[" v "\\]" { capture = 1; next }
+              capture && (/^## \\[/ || /^\\[[^][]+\\]:/) { exit }
+              capture { print }
+            ' CHANGELOG.md | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba}' > "$notes_file" && [ -s "$notes_file" ]; then
+            echo "Using CHANGELOG.md section for $version" >&2
+          else
+            echo "No CHANGELOG.md entry for $version; using auto-generated notes." >&2
+            gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="$GITHUB_REF_NAME" --jq .body > "$notes_file" || : > "$notes_file"
+          fi
+          printf '\n' >> "$notes_file"
+          cat .github/release-footer.md >> "$notes_file"
+          echo "file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release with all assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t files < <(find dist-artifacts -type f | sort)
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+            --draft \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "${{ steps.notes.outputs.file }}"
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
