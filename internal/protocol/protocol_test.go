@@ -62,3 +62,41 @@ func TestEnvelopeIgnoresUnknownFields(t *testing.T) {
 		t.Fatalf("validate: %v", err)
 	}
 }
+
+func TestAuditBatchValidate(t *testing.T) {
+	valid := AuditBatchBody{
+		Cursor: Cursor{FileGen: 1, ByteFrom: 10, ByteTo: 20, SeqTo: 1},
+		Events: []AuditEvent{{Seq: 0, TS: 1, Kind: "run", Msg: "start"}},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid audit batch rejected: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body AuditBatchBody
+	}{
+		{name: "missing file generation", body: AuditBatchBody{
+			Cursor: Cursor{ByteFrom: 10, ByteTo: 20},
+			Events: []AuditEvent{{Kind: "run"}},
+		}},
+		{name: "empty range", body: AuditBatchBody{
+			Cursor: Cursor{FileGen: 1, ByteFrom: 20, ByteTo: 20},
+			Events: []AuditEvent{{Kind: "run"}},
+		}},
+		{name: "empty events", body: AuditBatchBody{
+			Cursor: Cursor{FileGen: 1, ByteFrom: 10, ByteTo: 20},
+		}},
+		{name: "unknown kind", body: AuditBatchBody{
+			Cursor: Cursor{FileGen: 1, ByteFrom: 10, ByteTo: 20},
+			Events: []AuditEvent{{Kind: "shell"}},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.body.Validate(); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}

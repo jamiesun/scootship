@@ -80,6 +80,10 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 				writeJSONError(w, http.StatusBadRequest, "bad_audit_body", err.Error())
 				return
 			}
+			if err := msg.audit.Validate(); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "bad_audit_body", err.Error())
+				return
+			}
 		case protocol.TypeJobEvent:
 			if err := json.Unmarshal(env.Body, &msg.jobEvent); err != nil {
 				writeJSONError(w, http.StatusBadRequest, "bad_job_event_body", err.Error())

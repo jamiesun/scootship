@@ -112,6 +112,27 @@ type AuditBatchBody struct {
 	Events []AuditEvent `json:"events"`
 }
 
+// Validate checks the audit batch body before the center mutates store state.
+// A zero or empty range is not a harmless no-op: acking it would let an edge
+// advance without any durable audit evidence.
+func (b AuditBatchBody) Validate() error {
+	if b.Cursor.FileGen == 0 {
+		return errors.New("missing cursor.file_gen")
+	}
+	if b.Cursor.ByteTo <= b.Cursor.ByteFrom {
+		return fmt.Errorf("cursor byte_to must be greater than byte_from")
+	}
+	if len(b.Events) == 0 {
+		return errors.New("audit batch must contain at least one event")
+	}
+	for i, ev := range b.Events {
+		if err := ev.Validate(); err != nil {
+			return fmt.Errorf("event %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // Cursor is the idempotency cursor from EDGE.md: a monotonic rotation generation
 // plus byte offsets, with seq as a secondary correlation. The center stores
 // append-only; replaying the same range is a no-op (at-least-once, idempotent
@@ -143,6 +164,21 @@ type AuditEvent struct {
 	RunID     string `json:"run_id,omitempty"`
 	Kind      string `json:"kind"`
 	Msg       string `json:"msg"`
+}
+
+// Validate checks the audit event kind from Scoot's audit schema. Unknown
+// fields are still ignored by JSON decoding; unknown event kinds are rejected so
+// health and timeline semantics do not silently drop new authority-relevant
+// facts.
+func (e AuditEvent) Validate() error {
+	switch e.Kind {
+	case "run", "thought", "tool_call", "observation", "final", "policy_deny", "system_error":
+		return nil
+	case "":
+		return errors.New("missing kind")
+	default:
+		return fmt.Errorf("unknown kind %q", e.Kind)
+	}
 }
 
 // JobBody is a schema'd dispatch. kind is a closed enum (currently only "run").
