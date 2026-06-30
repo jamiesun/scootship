@@ -97,7 +97,8 @@ make ci          # fmt-check + vet + test + build
   site to GitHub Pages.
 - Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which injects the tag
   into `internal/version.Version`, cross-compiles single-binary archives for Linux, macOS,
-  and Windows, and publishes checksums with the GitHub release.
+  and Windows, publishes checksums with the GitHub release, and publishes multi-arch Linux
+  Docker images to GHCR as `ghcr.io/jamiesun/scootship:X.Y.Z` plus `latest` tags.
 - Project-local agent skills live in `.agents/skills`: `auto-release` for controlled release
   orchestration and `project-audit` for scored whole-repo health reports.
 

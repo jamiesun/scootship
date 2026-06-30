@@ -123,6 +123,44 @@ curl -fsS http://127.0.0.1:8080/healthz
 For direct HTTPS, replace `SCOOTSHIP_BEHIND_TLS_PROXY=1` with `SCOOTSHIP_TLS_CERT` and
 `SCOOTSHIP_TLS_KEY`, bind `SCOOTSHIP_ADDR` to the intended address, and verify with `https://`.
 
+## Container Image
+
+Release tags publish multi-arch Linux images to GHCR. Docker tags omit the leading Git tag `v`:
+
+```sh
+docker pull ghcr.io/jamiesun/scootship:X.Y.Z
+docker pull ghcr.io/jamiesun/scootship:X.Y.Z-alpine
+```
+
+The image defaults to `scootship serve`, listens on `:8080`, stores state in `/data`, and runs as a
+non-root user. It preserves the same transport fail-closed behavior as the binary: set direct TLS,
+trusted TLS proxy mode, or `SCOOTSHIP_DEV=1` for local-only testing.
+
+Example behind a trusted TLS reverse proxy:
+
+```sh
+sudo tee /etc/scootship/scootship.container.env >/dev/null <<'ENV'
+SCOOTSHIP_BEHIND_TLS_PROXY=1
+SCOOTSHIP_ADMIN_PASSWORD=replace-on-first-bootstrap-only
+SCOOTSHIP_NODE_TOKENS_FILE=/run/secrets/node-tokens.json
+ENV
+sudo chmod 0600 /etc/scootship/scootship.container.env
+
+docker volume create scootship-data
+docker run -d --name scootship \
+  -p 127.0.0.1:8080:8080 \
+  -v scootship-data:/data \
+  -v /etc/scootship/node-tokens.json:/run/secrets/node-tokens.json:ro \
+  --env-file /etc/scootship/scootship.container.env \
+  ghcr.io/jamiesun/scootship:X.Y.Z
+```
+
+For direct HTTPS, also mount the certificate and key as read-only files and set
+`SCOOTSHIP_TLS_CERT` / `SCOOTSHIP_TLS_KEY` to the in-container paths. Keep `/data`, token files, and
+TLS keys out of the image and out of shell history. Mounted token and TLS files must be readable by
+the container user (`uid 65532`) without making them world-readable; use a dedicated group, host ACL,
+or Docker secret mechanism appropriate for your deployment.
+
 ## Reverse Proxy Notes
 
 When using a reverse proxy:
