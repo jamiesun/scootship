@@ -57,7 +57,7 @@ make ci             # fmt-check + vet + test + build (run before pushing)
 make run            # center in dev mode on :8080
 make mock-edge      # simulated node against the local center
 make docs           # build the bilingual mdBook site into ./book
-make docs-serve     # preview the bilingual mdBook site locally
+make docs-serve     # preview the English mdBook root locally
 ```
 
 After changing any `.go` file, run at least `go build ./...` and `go test ./...`.

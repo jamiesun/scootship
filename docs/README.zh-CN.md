@@ -77,7 +77,7 @@ go run ./cmd/scootship mock-edge -ship-audit
 make run         # dev 模式中心
 make mock-edge   # 模拟节点
 make docs        # 构建双语 mdBook 文档到 ./book（需要 mdBook）
-make docs-serve  # 本地预览双语 mdBook 文档
+make docs-serve  # 本地预览英文 mdBook 根站点
 make ci          # fmt-check + vet + test + build
 ```
 

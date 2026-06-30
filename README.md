@@ -83,7 +83,7 @@ Or use the Makefile:
 make run         # center in dev mode
 make mock-edge   # simulated node
 make docs        # build bilingual mdBook docs into ./book (requires mdBook)
-make docs-serve  # preview bilingual mdBook docs locally
+make docs-serve  # preview the English mdBook root locally
 make ci          # fmt-check + vet + test + build
 ```
 

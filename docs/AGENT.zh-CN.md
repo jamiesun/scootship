@@ -50,7 +50,7 @@ make ci             # fmt-check + vet + test + build（推送前运行）
 make run            # dev 模式中心，监听 :8080
 make mock-edge      # 针对本地中心的模拟节点
 make docs           # 构建双语 mdBook 站点到 ./book
-make docs-serve     # 本地预览双语 mdBook 站点
+make docs-serve     # 本地预览英文 mdBook 根站点
 ```
 
 修改任何 `.go` 文件后，至少运行 `go build ./...` 与 `go test ./...`。
