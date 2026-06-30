@@ -89,6 +89,10 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 				writeJSONError(w, http.StatusBadRequest, "bad_job_event_body", err.Error())
 				return
 			}
+			if err := msg.jobEvent.Validate(); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "bad_job_event_body", err.Error())
+				return
+			}
 		}
 		msgs = append(msgs, msg)
 	}

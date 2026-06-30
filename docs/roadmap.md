@@ -66,12 +66,11 @@ The core operating model follows the topology and authorization model already fr
 
 ### Key premises and dependencies (to verify / coordination risk)
 
-- **`scoot-edge` is currently E0: design only, no code.** `EDGE.md` explicitly states "No
-  `scoot-edge` code exists yet", and its authorization model and red lines must be signed off
-  before any edge code is written. This means Scootship will, for a long time, **have no real
-  edge to integrate with**. So "being able to work against the protocol contract" and "shipping a
-  mock edge that simulates reporting and job leasing" are hard requirements for Scootship early
-  on, not nice-to-haves.
+- **`scoot-edge` is optional and may lag the center contract.** The Scoot repo now has an opt-in
+  E1 edge companion and the unattended clamp needed by E2, but full dispatch rollout still depends
+  on the remaining edge-side cwd confinement and a named compatible contract. So "being able to work
+  against the protocol contract" and "shipping a mock edge that simulates reporting and job leasing"
+  remain hard requirements for Scootship, not nice-to-haves.
 - **The protocol contract follows `EDGE.md` (`v:1`).** The envelope looks like
   `{"v":1,"type":"status|audit_batch|job|job_event","node_id":"...","sent_ts":<ms>,"body":{}}`;
   the frame format is NDJSON. Scootship must freeze this contract into a standalone, versioned
@@ -110,10 +109,11 @@ Once done, Scootship should look like this:
   and HTTP response bodies — once enabled, the center becomes a sink for potentially sensitive
   observation data. The center must do its own login authentication and action authorization for
   dashboard access, and have a retention / cleanup policy for stored audit data.
-- **Operational trust comes before remote orchestration.** The center must not grow into E2 job
-  dispatch until the E2 dispatch gate is fully satisfied: production/dev transport boundaries are
-  tested, deployment and recovery are documented, audit lifecycle and gaps are implemented, node auth
-  can be governed, and health signals are clear on the dashboard.
+- **Operational trust comes before remote orchestration.** Center-side E2 dispatch code must grow
+  behind explicit gates: production/dev transport boundaries are tested, deployment and recovery are
+  documented, audit lifecycle and gaps are implemented, node auth can be governed, health signals
+  are clear on the dashboard, and operator-facing dispatch remains withheld until the edge-side
+  rollout assumptions are satisfied.
 
 Priorities when qualities conflict (highest to lowest):
 
@@ -179,9 +179,26 @@ tested:
   single-binary archives with checksums; project-local skills document controlled release
   orchestration and whole-project audits (`.github/workflows`, `.agents/skills`).
 
-Phase 2 (task orchestration and dispatch) is not implemented yet: `GET /jobs/lease` is an
-observation-period stub today — it authenticates per the contract, validates the node and a bounded
-capacity request, but dispatches no jobs.
+Phase 2 center-side dispatch core has landed, while operator-facing dispatch rollout remains gated:
+
+- **Persisted dispatch queue and provenance.** The append-only JSONL store now persists dispatch job
+  snapshots, rebuilds them on replay, de-duplicates enqueue by `idem_key`, and keeps requestor,
+  target node, deadline, required labels/tools/skills, lifecycle phase, session linkage, effective
+  policy, and reject reason (`internal/store`).
+- **Node-bound lease dispatch.** `GET /jobs/lease` still authenticates per-node bearer tokens,
+  validates the `node` query and bounded `capacity`, and now returns only already-persisted jobs
+  bound to the authenticated node as `job` envelopes (`internal/center/lease.go`).
+- **Only-lower policy and capability miss rejection.** Dispatch jobs default to `readonly`, are
+  clamped down to the node's reported `policy_ceiling`, collapse unattended `guarded` to
+  `readonly`, and reject label/tool/skill mismatches as `no_matching_capability` instead of falling
+  through to unsafe execution (`internal/store`).
+- **Lifecycle telemetry validation.** `job_event` bodies are validated before mutation and update
+  dispatch lifecycle/provenance from append-only telemetry (`internal/protocol`,
+  `internal/center/telemetry.go`, `internal/store`).
+
+The dashboard still exposes no operator dispatch form or broad fan-out control. Full E2 rollout
+remains gated on the remaining Scoot edge-side `edge.job_root` confinement assumption and operator
+documentation.
 
 > Note: this section records only what already exists. As each capability lands, move it here from
 > "Direction and intent" and cite its entry point or evidence path.
@@ -249,12 +266,12 @@ tightly defended inbound surface".
 - **An integration base you can work against the contract with.** Freeze `EDGE.md`'s `v:1`
   envelope, `status` / `audit_batch` shapes, and audit schema into a versioned protocol module;
   ignore unknown fields, reject an unknown major version.
-- **Mock edge harness.** Because a real `scoot-edge` does not exist yet, Scootship must be
-  developable and verifiable without a real edge: a test edge that can simulate node heartbeats,
-  capability descriptors, and `audit_batch` reporting. In Phase 1, lease polling verifies only the
-  authenticated, node-bound, capacity-bounded empty-dispatch contract
-  (`X-Scootship-Dispatch: disabled-phase1`); real job lifecycle simulation belongs to E2 after the
-  dispatch gate is satisfied.
+- **Mock edge harness.** Because a real `scoot-edge` may not be available in local center tests,
+  Scootship must be developable and verifiable without it: a test edge that can simulate node heartbeats,
+  capability descriptors, and `audit_batch` reporting. Phase 1 used lease polling to verify the
+  authenticated, node-bound, capacity-bounded empty-dispatch contract; Phase 2 center-side tests now
+  cover persisted node-bound lease output and lifecycle telemetry while real edge execution remains
+  a rollout gate.
 - **Node registry and token governance.** The center creates, stores privately, recognizes, rotates,
   and revokes **per-node** authentication tokens — this is the center's own governance surface,
   distinct from "Scoot permission config", and does not violate the hard rules above.
@@ -304,9 +321,9 @@ center's authority.
 ### Phase 2 · Task orchestration and dispatch (aligned with scoot-edge E2)
 
 Serves the portrait "dispatch is traceable" and the hard rules "the center does not raise the local
-ceiling / does not execute raw commands". This phase is deliberately gated: keep `/jobs/lease` as an
-authenticated empty-dispatch stub until every dispatch gate below is satisfied and the Scoot side has
-landed the corresponding unattended readonly clamp.
+ceiling / does not execute raw commands". The center-side core now exists, but operator-facing
+dispatch remains deliberately gated until every rollout condition below is satisfied, including the
+remaining Scoot edge-side cwd confinement assumption.
 
 The E2 dispatch gate is all-or-nothing. Do not expose partial dispatch UI/API, hidden feature flags,
 or "admin-only" bypasses until these conditions are met:
@@ -326,31 +343,36 @@ or "admin-only" bypasses until these conditions are met:
 - A dispatch threat-model note covers queue abuse, replay/idempotency, capability spoofing,
   authorization, audit provenance, and rollback.
 
-Current gate status: **closed**. The E1 side now has code and test evidence for direct TLS,
-trusted TLS-proxy HTTP, explicit dev HTTP, and fail-closed default plain HTTP behavior, plus
-deployment/recovery docs, audit retention and gap visibility, token lifecycle governance, run audit
-timelines, read-only health signals, endpoint failure modes, and strict telemetry body validation.
-A pre-dispatch threat model exists in
-[`dispatch-threat-model.md`](dispatch-threat-model.md), but its assumptions still require owner
-confirmation. E2 remains blocked until the Scoot-side unattended readonly clamp and compatible edge
-contract are published and dispatch-specific code/tests exist in Scootship.
+Current gate status: **partially open for center-side core; operator dispatch still gated**. The E1
+side now has code and test evidence for direct TLS, trusted TLS-proxy HTTP, explicit dev HTTP, and
+fail-closed default plain HTTP behavior, plus deployment/recovery docs, audit retention and gap
+visibility, token lifecycle governance, run audit timelines, read-only health signals, endpoint
+failure modes, and strict telemetry body validation. Scoot `main` now documents and implements the
+unattended one-shot clamp (`scoot -e --unattended`) as the E2 keystone prerequisite, while its
+EDGE.md still gates E2 rollout on `edge.job_root` cwd confinement. Scootship now has dispatch queue,
+lease, idempotency, capability-miss rejection, and lifecycle tests. Operator-facing dispatch UI/API
+remains blocked until the remaining edge-side assumption and operator documentation are satisfied.
 
-- **Long-poll-based job dispatch.** Implement the center-side semantics of
+- **Long-poll-based job dispatch.** Implemented for direct node-targeted jobs:
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
   descriptor; on a miss, reject with `no_matching_capability` — a capability mismatch only
   downgrades to reject, never to unsafe execution.
-- **Job lifecycle and idempotency.** Track `accepted/running/done/failed/rejected`, carry
-  `idem_key` to guarantee "the same job runs only once", and respect capacity backpressure
-  (`at_capacity`), `deadline_ts`, and a retry cap.
-- **Only-lower policy expression.** When dispatching, only request a policy `≤` the node's local
+- **Job lifecycle and idempotency.** Implemented in the center-side store/telemetry path: track
+  queued/leased plus `accepted/running/done/failed/rejected`, carry
+  `idem_key` to guarantee "the same job runs only once", bound lease output by node-advertised
+  capacity, reject expired `deadline_ts`, and record the retry cap for the edge contract. Explicit
+  retry scheduling and `at_capacity` lifecycle reporting are still rollout work.
+- **Only-lower policy expression.** Implemented in the center-side enqueue path: when dispatching,
+  only request a policy `≤` the node's local
   ceiling, defaulting to `readonly`; the center UI / API offers no entry point to "raise a node's
   ceiling".
-- **Dispatch-provenance audit.** The center records the full story of each dispatch and joins it
+- **Dispatch-provenance audit.** Partially implemented: the center records dispatch provenance and
+  updates lifecycle/session linkage; joining it
   back to the ingested Scoot run audit via `session_id`, forming an end-to-end traceable chain.
 - **E2 prerequisites are explicit.** Queue semantics, capability / label matching, `idem_key`
-  idempotency, capacity backpressure, deadlines, `job_event` handling, dispatch provenance, and the
-  Scoot-side unattended readonly clamp must exist as code plus tests, not just prose, before any
-  partial dispatch UI or API is exposed.
+  idempotency, capacity bounding, deadlines, `job_event` handling, dispatch provenance, and the
+  Scoot-side unattended readonly clamp now exist as code plus tests or upstream contract evidence;
+  operator-facing dispatch still waits on the remaining edge cwd confinement and runbook work.
 
 ### Phase 3 · Governance and operational scale
 
@@ -370,18 +392,18 @@ taken seriously" after the E1 maturity baseline is in place.
 > techniques (SQLite, HTMX, templates, e2e tests, etc.) are examples and suggestions, chosen by the
 > implementer in practice.
 
-- **Protocol integration is real and verifiable.** Even before a real `scoot-edge` ships, Scootship
-  can use its built-in mock edge to run the full "heartbeat → ingest → visible on dashboard" path and
-  the Phase 1 "authenticated lease poll → empty dispatch" path, with automated tests guarding this
-  core data flow. Real "lease job → report lifecycle" verification is an E2-only completion signal.
+- **Protocol integration is real and verifiable.** Scootship can use its built-in mock edge to run
+  the full "heartbeat → ingest → visible on dashboard" path, and tests now guard authenticated
+  node-bound lease output plus `job_event` lifecycle updates. Full real-edge "lease job → run via
+  edge → report lifecycle" verification remains an E2 rollout signal.
 - **Observation is one glance away.** Without querying a database, an operator sees fleet online
   status, versions, policy ceilings, and audit stats on the dashboard; a new node appears in the
   registry automatically after it reports.
 - **Ingest is lossless and dup-free.** A re-delivered `audit_batch` range is a no-op; the cursor
   advances only after the center acks; exceeding the retention cap produces an explicit `audit_gap`
   marker rather than a silent loss.
-- **E1 is production-credible before E2.** The E2 dispatch gate above is fully checked off with code,
-  tests, and operator documentation before remote dispatch grows.
+- **E1 is production-credible before E2.** The E2 dispatch gate above is checked off with code,
+  tests, and operator documentation before operator-facing remote dispatch grows.
 - **Boundaries hold automatically.** Any path that tries to "raise a node's local policy ceiling",
   "write back Scoot's local state", "run raw commands on a node", or "reverse-connect into the edge"
   does not exist by design; dispatch can only downgrade.

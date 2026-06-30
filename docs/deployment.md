@@ -2,8 +2,10 @@
 
 **English** | [简体中文](deployment.zh-CN.md)
 
-This document is the operator runbook for a real Phase 1 Scootship center. It does not enable E2
-dispatch and does not grant the center any authority to raise a node's local policy ceiling.
+This document is the operator runbook for a real Scootship center. It covers production transport,
+storage, backup, and recovery. Center-side E2 dispatch records may exist, but this runbook does not
+enable operator-facing dispatch rollout and does not grant the center any authority to raise a
+node's local policy ceiling.
 
 ## Production Boundary
 
@@ -252,5 +254,5 @@ entries that might have been exposed with the backup.
 - Do not store bearer tokens, TLS keys, or real bootstrap passwords in the repository.
 - Do not copy backups into low-trust ticket systems or chat logs.
 - Do not expose the plain listener when relying on a TLS proxy.
-- Do not treat this document as approval for dispatch; `/jobs/lease` remains an authenticated
-  empty-dispatch stub in Phase 1.
+- Do not treat this document as approval for operator-facing dispatch rollout; `/jobs/lease` only
+  returns already-persisted, node-bound jobs, and the dashboard still exposes no dispatch form.

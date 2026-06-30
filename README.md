@@ -12,11 +12,12 @@ action in a JSONL audit trail. Today each Scoot install is an island. `scootship
 points to: a single Go binary that ingests append-only fleet telemetry over the `scoot-edge`
 protocol and serves an embedded admin dashboard so you can observe the whole fleet from one place.
 
-> **Status: Phase 1 — observation + framework (pre-1.0).**
+> **Status: Phase 2 center-side dispatch core (pre-1.0).**
 > The center ingests `status` heartbeats and `audit_batch` log shipping and renders the fleet.
-> Task **dispatch/orchestration (EDGE.md E2)** is intentionally not built yet — the lease
-> endpoint exists but dispatches nothing. See [`docs/roadmap.md`](docs/roadmap.md) for the
-> project shape, boundaries, and direction.
+> Task **dispatch/orchestration (EDGE.md E2)** now has a persisted center-side queue, node-bound
+> lease output, lifecycle ingestion, and idempotency/provenance tests. The dashboard still exposes
+> no operator dispatch form until the remaining edge-side rollout gate is satisfied. See
+> [`docs/roadmap.md`](docs/roadmap.md) for the project shape, boundaries, and direction.
 
 ## Why a separate companion
 
@@ -52,7 +53,7 @@ append-only to the center JSONL log.
                           |  edge dials OUT (HTTPS + per-node token)
         +-----------------+-----------------+
         |                 |                 |
-    scoot-edge        scoot-edge        scoot-edge   (optional, not built yet)
+    scoot-edge        scoot-edge        scoot-edge   (optional companion)
         |                 |                 |
       scoot             scoot             scoot
 ```
@@ -66,8 +67,7 @@ dashboard and storage are built in.
 # Terminal 1 — run the center in dev mode (dashboard open, demo token n-dev=dev-token seeded)
 SCOOTSHIP_DEV=1 go run ./cmd/scootship serve
 
-# Terminal 2 — the real scoot-edge does not exist yet (EDGE.md is E0/design-only),
-# so drive the full heartbeat -> ingest -> dashboard path with the built-in simulator:
+# Terminal 2 — drive the heartbeat -> ingest -> dashboard path with the built-in simulator:
 go run ./cmd/scootship mock-edge -ship-audit
 ```
 
@@ -163,10 +163,12 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
 - **Dashboard action authorization (implemented):** authenticated operators carry direct built-in
   capabilities (`fleet:view`, `tokens:manage`, `operators:manage`) instead of role groups. All
   authenticated state-changing forms require a session-bound CSRF token.
-- **E2 (stubbed):** `GET /jobs/lease` authenticates the node, requires a matching `node` query
-  param, bounds `capacity`, and dispatches nothing in Phase 1. The pre-dispatch threat model is in
-  [`docs/dispatch-threat-model.md`](docs/dispatch-threat-model.md); it is a gate artifact, not
-  implementation approval.
+- **E2 center-side core (implemented):** `GET /jobs/lease` authenticates the node, requires a
+  matching `node` query param, bounds `capacity`, and returns only jobs already persisted for that
+  node. Dispatch records are append-only JSONL snapshots with `idem_key` de-duplication, node
+  binding, capability/label miss rejection (`no_matching_capability`), only-lower policy clamping
+  against the node's reported ceiling, and lifecycle updates from validated `job_event` telemetry.
+  The dashboard still has no operator dispatch form while the remaining edge rollout gate is open.
 
 scootship talks only this contract; it does not depend on any Scoot internal.
 
@@ -176,12 +178,12 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | --- | --- |
 | `cmd/scootship` | CLI entrypoint: `serve`, `mock-edge`, `version`. |
 | `internal/protocol` | The frozen scoot-edge v1 wire contract (envelope, bodies, cursor). |
-| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, visible audit-retention gaps, and retained-window run timelines. |
+| `internal/store` | Append-only JSONL fleet store with idempotent audit ingest, replay, visible audit-retention gaps, retained-window run timelines, and center-side dispatch queue/provenance records. |
 | `internal/tokens` | Per-node bearer-token registry, private managed lifecycle state, and dashboard-safe token inventory metadata (the center's node auth surface). |
 | `internal/operators` | Dashboard operator accounts, direct capabilities, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |
 | `internal/config` | Environment-driven configuration. |
-| `internal/center` | HTTP server, bearer + login-session auth, capability gates, CSRF checks, telemetry ingest, lease stub, read-only health signals, dashboard + JSON API. |
+| `internal/center` | HTTP server, bearer + login-session auth, capability gates, CSRF checks, telemetry ingest, node-bound lease dispatch, read-only health signals, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
 | `internal/version` | Build version string; release builds override it from the tag. |

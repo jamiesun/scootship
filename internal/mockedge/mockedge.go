@@ -1,11 +1,10 @@
 // Package mockedge simulates a scoot-edge node for development and testing.
 //
-// The real scoot-edge binary does not exist yet (EDGE.md is E0, design-only), so
-// scootship cannot rely on a real edge to exercise the center. This simulator
-// dials out exactly like the spec's topology demands — outbound only, per-node
-// bearer token, NDJSON envelopes — and drives the full heartbeat -> ingest ->
-// dashboard path plus a harmless lease poll. It is a faithful client of the
-// frozen v1 contract, not a second implementation of scoot.
+// Center tests cannot rely on a locally installed real edge. This simulator
+// dials out exactly like the spec's topology demands: outbound only, per-node
+// bearer token, NDJSON envelopes. It drives the heartbeat -> ingest -> dashboard
+// path plus lease polling as a faithful client of the frozen v1 contract, not a
+// second implementation of scoot.
 package mockedge
 
 import (

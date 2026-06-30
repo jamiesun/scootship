@@ -100,3 +100,60 @@ func TestAuditBatchValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestJobBodyValidate(t *testing.T) {
+	valid := JobBody{
+		JobID:           "j-1",
+		IdemKey:         "idem-1",
+		Kind:            JobKindRun,
+		Goal:            "summarize audit anomalies",
+		RequestedPolicy: PolicyReadonly,
+		DeadlineTS:      1000,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid job rejected: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body JobBody
+	}{
+		{"missing id", JobBody{IdemKey: "i", Kind: JobKindRun, Goal: "g", RequestedPolicy: PolicyReadonly, DeadlineTS: 1}},
+		{"missing idem", JobBody{JobID: "j", Kind: JobKindRun, Goal: "g", RequestedPolicy: PolicyReadonly, DeadlineTS: 1}},
+		{"bad kind", JobBody{JobID: "j", IdemKey: "i", Kind: "shell", Goal: "g", RequestedPolicy: PolicyReadonly, DeadlineTS: 1}},
+		{"missing goal", JobBody{JobID: "j", IdemKey: "i", Kind: JobKindRun, RequestedPolicy: PolicyReadonly, DeadlineTS: 1}},
+		{"bad policy", JobBody{JobID: "j", IdemKey: "i", Kind: JobKindRun, Goal: "g", RequestedPolicy: "root", DeadlineTS: 1}},
+		{"missing deadline", JobBody{JobID: "j", IdemKey: "i", Kind: JobKindRun, Goal: "g", RequestedPolicy: PolicyReadonly}},
+		{"bad retry", JobBody{JobID: "j", IdemKey: "i", Kind: JobKindRun, Goal: "g", RequestedPolicy: PolicyReadonly, DeadlineTS: 1, MaxRetries: -1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.body.Validate(); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestJobEventBodyValidate(t *testing.T) {
+	valid := JobEventBody{JobID: "j-1", Phase: JobPhaseRunning, EffectivePolicy: PolicyReadonly}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid job event rejected: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body JobEventBody
+	}{
+		{"missing id", JobEventBody{Phase: JobPhaseRunning}},
+		{"bad phase", JobEventBody{JobID: "j", Phase: "leased"}},
+		{"bad policy", JobEventBody{JobID: "j", Phase: JobPhaseDone, EffectivePolicy: "root"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.body.Validate(); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}

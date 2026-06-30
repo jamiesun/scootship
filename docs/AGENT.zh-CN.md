@@ -26,7 +26,7 @@
 
 scootship 是面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的**管理中心**。它实现冻结的
 `scoot-edge` v1 契约的**中心（服务端）侧**（见 Scoot 的 `docs/EDGE.md`）：通过 HTTP 摄入 append-only
-遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段一仅做观测。
+遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段二中心侧派发核心已存在，面向操作员的派发上线仍需门禁。
 
 ## 与 Scoot 的关系（先读这个）
 
@@ -64,12 +64,12 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。`.github/w
 | --- | --- |
 | `cmd/scootship/main.go` | CLI：`serve`、`mock-edge`、`version`；环境驱动启动；基于信号的优雅关闭。 |
 | `internal/protocol` | 冻结的 scoot-edge v1 契约：信封、status/audit/job bodies、幂等游标。最窄、最稳定的面 —— 只为跟随 EDGE.md 而改。 |
-| `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口、显式保留缺口和保留窗口内运行时间线。 |
+| `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口、显式保留缺口、保留窗口内运行时间线，以及中心侧派发队列 / provenance 快照。 |
 | `internal/tokens` | 每节点 bearer-token 注册表与私有托管生命周期 overlay。中心的节点鉴权面；**不是**节点策略配置。 |
 | `internal/operators` | 仪表盘操作员账户、直接内置能力、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |
 | `internal/config` | `SCOOTSHIP_*` 环境配置。 |
-| `internal/center` | HTTP 服务器、鉴权中间件、能力门禁、CSRF 校验、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、只读健康信号、仪表盘登录会话、仪表盘 + JSON API。 |
+| `internal/center` | HTTP 服务器、鉴权中间件、能力门禁、CSRF 校验、登录限流 + 安全头、`/telemetry` 摄入、节点绑定的 `/jobs/lease` 派发、只读健康信号、仪表盘登录会话、仪表盘 + JSON API。 |
 | `internal/center/server_run_test.go` | 直连 TLS、显式 dev HTTP 与可信 TLS 反代 HTTP 模式的运行时传输 smoke 覆盖。 |
 | `internal/web` | `embed.FS` 仪表盘模板与静态资源。 |
 | `internal/mockedge` | 模拟的边缘节点（心跳、审计上报、lease 轮询）。 |
@@ -112,15 +112,15 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。`.github/w
 
 ## 阶段边界
 
-- **阶段一（现在）：观测 + 框架。** `status` 与 `audit_batch` 摄入、车队仪表盘、节点注册表、每节点
+- **阶段一（已落地）：观测 + 框架。** `status` 与 `audit_batch` 摄入、车队仪表盘、节点注册表、每节点
   令牌鉴权 / 生命周期，以及 mock-edge 装置。
-- **阶段一半（当前）：先补 E1 运维成熟度，再新增权力。** 在扩大中心权力面前，继续收紧生产 / dev
+- **阶段一半（已落地）：先补 E1 运维成熟度，再新增权力。** 在扩大中心权力面前，继续收紧生产 / dev
   传输、端点失败模式、审计保留 / gap 可见性、运行审计时间线、token 生命周期加固和只读健康信号。
-- **E2（以后，需门禁）：作业派发 / 编排。** `/jobs/lease` 端点今天是占位。构建真实派发意味着能力/标签
-  路由、只降不升的策略 clamp、幂等 `idem_key` 应用、容量背压、截止期限，以及通过 `session_id` 关联
-  到运行的派发溯源审计。不要把派发半路接进阶段一；在路线图 E2 派发门禁以代码、测试、运维文档、兼容的
-  Scoot readonly clamp 与派发威胁模型形式全部满足前，不要暴露局部派发 UI/API、隐藏 feature flag 或仅管理员
-  可用的绕行。
+- **E2（当前中心侧核心，rollout 仍需门禁）：作业派发 / 编排。** 中心可以持久化直接面向节点的派发
+  任务，按 `idem_key` 去重，把请求策略降到节点已上报天花板以内，拒绝能力 / 标签不匹配，lease 时只向已鉴权
+  节点返回绑定到它的任务，并用已校验的 `job_event` 遥测更新生命周期。剩余 edge 侧上线门禁满足前，
+  仪表盘仍不暴露操作员派发表单。不要加入广域 fan-out、隐藏 feature flag、仅管理员可用的绕行、raw command
+  字段，或任何会抬高节点天花板的路径。
 
 ## 扩展工作流
 
