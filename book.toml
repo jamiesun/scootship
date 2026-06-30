@@ -1,0 +1,16 @@
+[book]
+title = "scootship Documentation"
+authors = ["scootship contributors"]
+language = "en"
+src = ".mdbook/src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+site-url = "/scootship/"
+git-repository-url = "https://github.com/jamiesun/scootship"
+no-section-label = true

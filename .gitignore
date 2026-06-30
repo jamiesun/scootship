@@ -1,6 +1,8 @@
 # Binaries / build output
 /bin/
 /dist/
+/book/
+/.mdbook/
 # Anchored to repo root so it ignores a stray `go build` binary here, NOT the
 # cmd/scootship/ source directory.
 /scootship

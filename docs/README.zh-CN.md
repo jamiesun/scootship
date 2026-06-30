@@ -74,9 +74,11 @@ go run ./cmd/scootship mock-edge -ship-audit
 或使用 Makefile：
 
 ```sh
-make run        # dev 模式中心
-make mock-edge  # 模拟节点
-make ci         # fmt-check + vet + test + build
+make run         # dev 模式中心
+make mock-edge   # 模拟节点
+make docs        # 构建双语 mdBook 文档到 ./book（需要 mdBook）
+make docs-serve  # 本地预览双语 mdBook 文档
+make ci          # fmt-check + vet + test + build
 ```
 
 ## CI、release 与项目 skills
@@ -84,6 +86,8 @@ make ci         # fmt-check + vet + test + build
 - CI 通过 `.github/workflows/ci.yml` 在 push、pull request 和手动触发时运行：
   `gofmt`、`go vet`、`go test`、`go build`、CLI 版本 smoke，以及 release target
   的交叉编译 smoke 检查。
+- `.github/workflows/docs.yml` 中的 docs workflow 会在文档相关 push、pull request 和手动触发时
+  构建双语 mdBook；推送到 `main` 时还会把生成的 `book/` 站点部署到 GitHub Pages。
 - 推送 `vX.Y.Z` 标签会触发 `.github/workflows/release.yml`，它会把标签注入
   `internal/version.Version`，为 Linux、macOS 与 Windows 交叉编译单二进制 archives，
   并随 GitHub Release 发布校验和。
@@ -163,7 +167,7 @@ scootship 只说这份契约；它不依赖任何 Scoot 内部实现。
 | `internal/web` | 嵌入式仪表盘模板与静态资源（`embed.FS`）。 |
 | `internal/mockedge` | 模拟的 scoot-edge 节点（替代尚未构建的边缘）。 |
 | `internal/version` | 构建版本字符串；release 构建会从标签覆盖它。 |
-| `.github/workflows` | CI 与标签驱动的 release 自动化。 |
+| `.github/workflows` | CI、mdBook 文档与标签驱动的 release 自动化。 |
 | `.agents/skills` | 项目本地 release 与 audit skills。 |
 | `docs/roadmap.zh-CN.md` | 项目形态、非目标与方向。 |
 
