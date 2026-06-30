@@ -56,11 +56,14 @@ gofmt -l .          # should print nothing
 make ci             # fmt-check + vet + test + build (run before pushing)
 make run            # center in dev mode on :8080
 make mock-edge      # simulated node against the local center
+make docs           # build the bilingual mdBook site into ./book
+make docs-serve     # preview the bilingual mdBook site locally
 ```
 
 After changing any `.go` file, run at least `go build ./...` and `go test ./...`.
 
-GitHub Actions mirrors this with `.github/workflows/ci.yml`. Pushing a `vX.Y.Z` tag triggers
+GitHub Actions mirrors this with `.github/workflows/ci.yml`. `.github/workflows/docs.yml` builds
+and deploys the bilingual mdBook documentation. Pushing a `vX.Y.Z` tag triggers
 `.github/workflows/release.yml`, which cross-compiles the single binary and publishes release
 archives with checksums.
 
@@ -80,7 +83,7 @@ archives with checksums.
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
 | `internal/version` | Build version string; release builds override `Version` with tag-derived linker flags. |
-| `.github/workflows` | CI and tag-driven release automation for cross-platform single-binary artifacts. |
+| `.github/workflows` | CI, mdBook docs, and tag-driven release automation for cross-platform single-binary artifacts. |
 | `.agents/skills` | Project-local agent skills for release orchestration and whole-project audits. |
 | `docs/deployment.md` | Operator runbook for production transport modes, data permissions, backup, and recovery. |
 | `docs/dispatch-threat-model.md` | Pre-dispatch E2 threat model; a gate artifact, not implementation approval. |

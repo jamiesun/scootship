@@ -49,12 +49,14 @@ gofmt -l .          # 应当无输出
 make ci             # fmt-check + vet + test + build（推送前运行）
 make run            # dev 模式中心，监听 :8080
 make mock-edge      # 针对本地中心的模拟节点
+make docs           # 构建双语 mdBook 站点到 ./book
+make docs-serve     # 本地预览双语 mdBook 站点
 ```
 
 修改任何 `.go` 文件后，至少运行 `go build ./...` 与 `go test ./...`。
 
-GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX.Y.Z` 标签会触发
-`.github/workflows/release.yml`，它会交叉编译单二进制并发布带校验和的 release archives。
+GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。`.github/workflows/docs.yml` 会构建并部署
+双语 mdBook 文档。推送 `vX.Y.Z` 标签会触发 `.github/workflows/release.yml`，它会交叉编译单二进制并发布带校验和的 release archives。
 
 ## 代码地图
 
@@ -72,7 +74,7 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `internal/web` | `embed.FS` 仪表盘模板与静态资源。 |
 | `internal/mockedge` | 模拟的边缘节点（心跳、审计上报、lease 轮询）。 |
 | `internal/version` | 构建版本字符串；release 构建会用从标签派生的 linker flags 覆盖 `Version`。 |
-| `.github/workflows` | CI 与标签驱动的 release 自动化，用于跨平台单二进制 artifacts。 |
+| `.github/workflows` | CI、mdBook 文档与标签驱动的 release 自动化，用于跨平台单二进制 artifacts。 |
 | `.agents/skills` | 项目本地 agent skills，用于 release 编排与全项目审计。 |
 | `docs/deployment.zh-CN.md` | 面向生产传输模式、数据权限、备份和恢复的运维手册。 |
 | `docs/dispatch-threat-model.zh-CN.md` | E2 预派发威胁模型；这是门禁材料，不是实现批准。 |

@@ -174,10 +174,10 @@ tested:
 - **Deployment, backup, and recovery runbook.** Operator documentation covers direct TLS versus
   trusted TLS proxy mode, private data-directory and token-file permissions, systemd operation,
   sensitive backup contents, restore steps, and post-restore verification (`docs/deployment.md`).
-- **CI, release automation, and project skills.** GitHub Actions run CI and tag-driven release
-  builds for cross-platform single-binary archives with checksums; project-local skills document
-  controlled release orchestration and whole-project audits (`.github/workflows`,
-  `.agents/skills`).
+- **CI, docs, release automation, and project skills.** GitHub Actions run CI, build and deploy
+  the bilingual mdBook documentation site, and produce tag-driven release builds for cross-platform
+  single-binary archives with checksums; project-local skills document controlled release
+  orchestration and whole-project audits (`.github/workflows`, `.agents/skills`).
 
 Phase 2 (task orchestration and dispatch) is not implemented yet: `GET /jobs/lease` is an
 observation-period stub today — it authenticates per the contract, validates the node and a bounded

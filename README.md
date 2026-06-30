@@ -80,9 +80,11 @@ labels, and (because `-ship-audit` is on) a few ingested audit events on the nod
 Or use the Makefile:
 
 ```sh
-make run        # center in dev mode
-make mock-edge  # simulated node
-make ci         # fmt-check + vet + test + build
+make run         # center in dev mode
+make mock-edge   # simulated node
+make docs        # build bilingual mdBook docs into ./book (requires mdBook)
+make docs-serve  # preview bilingual mdBook docs locally
+make ci          # fmt-check + vet + test + build
 ```
 
 ## CI, release, and project skills
@@ -90,6 +92,9 @@ make ci         # fmt-check + vet + test + build
 - CI runs on pushes, pull requests, and manual dispatch via `.github/workflows/ci.yml`:
   `gofmt`, `go vet`, `go test`, `go build`, a CLI version smoke, and release-target
   cross-compile smoke checks.
+- The docs workflow in `.github/workflows/docs.yml` builds the bilingual mdBook on docs-related
+  pushes, pull requests, and manual dispatch; pushes to `main` also deploy the generated `book/`
+  site to GitHub Pages.
 - Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which injects the tag
   into `internal/version.Version`, cross-compiles single-binary archives for Linux, macOS,
   and Windows, and publishes checksums with the GitHub release.
@@ -179,7 +184,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
 | `internal/version` | Build version string; release builds override it from the tag. |
-| `.github/workflows` | CI and tag-driven release automation. |
+| `.github/workflows` | CI, mdBook docs, and tag-driven release automation. |
 | `.agents/skills` | Project-local release and audit skills. |
 | `docs/roadmap.md` | Project shape, non-goals, and direction. |
 

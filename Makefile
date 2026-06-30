@@ -1,7 +1,7 @@
 BINARY := scootship
 PKG := ./...
 
-.PHONY: build run mock-edge test vet fmt fmt-check ci clean
+.PHONY: build run mock-edge test vet fmt fmt-check docs docs-serve ci clean
 
 ## build: compile the single binary into ./bin
 build:
@@ -31,9 +31,19 @@ fmt:
 fmt-check:
 	@test -z "$$(gofmt -l .)" || { echo "gofmt needed in:"; gofmt -l .; exit 1; }
 
+## docs: generate and build the bilingual mdBook site into ./book
+docs:
+	./scripts/prepare-mdbook.sh
+	mdbook build
+
+## docs-serve: generate and preview the bilingual mdBook site locally
+docs-serve:
+	./scripts/prepare-mdbook.sh
+	mdbook serve
+
 ## ci: the checks to run before pushing
 ci: fmt-check vet test build
 
-## clean: remove build output and the local data store
+## clean: remove build output, docs output, and the local data store
 clean:
-	rm -rf bin data
+	rm -rf bin data book .mdbook
