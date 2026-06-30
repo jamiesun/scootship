@@ -2,7 +2,7 @@
 title = "scootship Documentation"
 authors = ["scootship contributors"]
 language = "en"
-src = ".mdbook/src"
+src = ".mdbook/en/src"
 
 [build]
 build-dir = "book"
@@ -13,4 +13,6 @@ default-theme = "coal"
 preferred-dark-theme = "coal"
 site-url = "/scootship/"
 git-repository-url = "https://github.com/jamiesun/scootship"
+additional-css = ["docs/mdbook/language-switch.css"]
+additional-js = ["docs/mdbook/language-switch.js"]
 no-section-label = true

@@ -1,0 +1,30 @@
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  min-width: auto;
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: var(--menu-bar-height);
+  color: var(--fg);
+  border-inline-start: 1px solid var(--sidebar-bg);
+}
+
+.language-switch:hover,
+.language-switch:focus {
+  color: var(--links);
+  text-decoration: none;
+}
+
+.language-switch__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+@media (max-width: 520px) {
+  .language-switch__label {
+    display: none;
+  }
+}

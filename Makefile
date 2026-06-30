@@ -33,10 +33,9 @@ fmt-check:
 
 ## docs: generate and build the bilingual mdBook site into ./book
 docs:
-	./scripts/prepare-mdbook.sh
-	mdbook build
+	./scripts/build-mdbook.sh
 
-## docs-serve: generate and preview the bilingual mdBook site locally
+## docs-serve: generate and preview the English mdBook locally
 docs-serve:
 	./scripts/prepare-mdbook.sh
 	mdbook serve

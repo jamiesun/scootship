@@ -8,6 +8,7 @@ on:
       - "AGENT.md"
       - "book.toml"
       - "docs/**"
+      - "scripts/build-mdbook.sh"
       - "scripts/prepare-mdbook.sh"
       - ".github/workflows/docs.yml"
   pull_request:
@@ -16,6 +17,7 @@ on:
       - "AGENT.md"
       - "book.toml"
       - "docs/**"
+      - "scripts/build-mdbook.sh"
       - "scripts/prepare-mdbook.sh"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
@@ -40,11 +42,8 @@ jobs:
       - name: Install mdBook
         run: cargo install mdbook --locked --version "$MDBOOK_VERSION"
 
-      - name: Prepare bilingual mdBook source
-        run: ./scripts/prepare-mdbook.sh
-
-      - name: Build docs
-        run: mdbook build
+      - name: Build bilingual docs
+        run: ./scripts/build-mdbook.sh
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
