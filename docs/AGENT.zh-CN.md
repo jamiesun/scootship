@@ -64,10 +64,10 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
 | `internal/protocol` | 冻结的 scoot-edge v1 契约：信封、status/audit/job bodies、幂等游标。最窄、最稳定的面 —— 只为跟随 EDGE.md 而改。 |
 | `internal/store` | `Store` 接口 + append-only JSONL `Mem` 实现。幂等审计摄入、启动时重放、有界仪表盘审计窗口、显式保留缺口和保留窗口内运行时间线。 |
 | `internal/tokens` | 每节点 bearer-token 注册表与私有托管生命周期 overlay。中心的节点鉴权面；**不是**节点策略配置。 |
-| `internal/operators` | 仪表盘操作员账户、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
+| `internal/operators` | 仪表盘操作员账户、直接内置能力、资料/密码管理与密码哈希。中心的操作员治理面；**不是**节点策略配置。 |
 | `internal/loginguard` | 仪表盘登录的按来源 IP 暴力破解限流（滑动窗口失败计数 + 锁定）。 |
 | `internal/config` | `SCOOTSHIP_*` 环境配置。 |
-| `internal/center` | HTTP 服务器、鉴权中间件、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、只读健康信号、仪表盘登录会话、仪表盘 + JSON API。 |
+| `internal/center` | HTTP 服务器、鉴权中间件、能力门禁、CSRF 校验、登录限流 + 安全头、`/telemetry` 摄入、`/jobs/lease` 占位、只读健康信号、仪表盘登录会话、仪表盘 + JSON API。 |
 | `internal/center/server_run_test.go` | 直连 TLS、显式 dev HTTP 与可信 TLS 反代 HTTP 模式的运行时传输 smoke 覆盖。 |
 | `internal/web` | `embed.FS` 仪表盘模板与静态资源。 |
 | `internal/mockedge` | 模拟的边缘节点（心跳、审计上报、lease 轮询）。 |
@@ -96,10 +96,11 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。推送 `vX
    重放的区间是 no-op；只 ack 已持久存储的游标。
 6. **UI 以嵌入方式交付。** 仪表盘资源从单二进制里的 `embed.FS` 提供 —— 没有独立 web 进程、没有 Node
    构建步骤、没有 CDN 运行时依赖。
-7. **密钥绝不被编进、提交、记录或打印。** 节点令牌、TLS 私钥和 bootstrap 仪表盘密码来自环境变量或私有文件；持久化的操作员密码必须是单向哈希。
-   不要记录 `Authorization` 头。
+7. **密钥绝不被编进、提交、记录或打印到日志。** 节点令牌、TLS 私钥和 bootstrap 仪表盘密码来自环境变量或私有文件；持久化的操作员密码必须是单向哈希。
+   仪表盘可以在创建 / 轮换时一次性显示生成的节点令牌，但 token 清单、API、日志和审计绝不能暴露 bearer secret。不要记录 `Authorization` 头。
 8. **每个节点与仪表盘端点都要鉴权。** 节点路由用 bearer token，仪表盘用登录会话（表单登录 + HttpOnly
-   cookie）。一个令牌只能为它自己的 `node_id` 说话。仪表盘登录按来源 IP 限流（`internal/loginguard`）：
+   cookie）。一个令牌只能为它自己的 `node_id` 说话。已登录后的仪表盘状态变更必须通过会话绑定的
+   CSRF 校验，并按直接内置能力做操作门禁。仪表盘登录按来源 IP 限流（`internal/loginguard`）：
    绝不削弱或移除锁定，也绝不按用户名键控（那会让攻击者锁死真正的运维者）。只信任来自已配置
    `SCOOTSHIP_TRUSTED_PROXIES` 的 `X-Forwarded-For`。
 9. **保持标准库优先与单二进制。** 优先标准库。在加入任何第三方依赖前，要对照单二进制、易交叉编译的

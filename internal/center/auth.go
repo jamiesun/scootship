@@ -2,6 +2,7 @@ package center
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -9,12 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jamiesun/scootship/internal/operators"
 	"github.com/jamiesun/scootship/internal/version"
 )
 
 type ctxKey int
 
-const nodeIDKey ctxKey = iota
+const (
+	nodeIDKey     ctxKey = iota
+	csrfFieldName        = "csrf_token"
+)
 
 // --- node auth (edge-facing, bearer token) ---
 
@@ -80,11 +85,72 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 }
 
 func (s *Server) currentUser(r *http.Request) (string, bool) {
+	user, _, ok := s.currentSession(r)
+	return user, ok
+}
+
+func (s *Server) currentSession(r *http.Request) (string, string, bool) {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	return s.sessions.validate(c.Value)
+	user, ok := s.sessions.validate(c.Value)
+	return user, c.Value, ok
+}
+
+func (s *Server) csrfToken(r *http.Request) string {
+	_, token, ok := s.currentSession(r)
+	if !ok {
+		return ""
+	}
+	csrf, ok := s.sessions.csrf(token)
+	if !ok {
+		return ""
+	}
+	return csrf
+}
+
+func (s *Server) requireCapability(cap operators.Capability, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := s.currentUser(r)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized", "login required")
+			return
+		}
+		if !s.operatorHasCapability(user, cap) {
+			writeJSONError(w, http.StatusForbidden, "forbidden", "operator capability required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) operatorHasCapability(username string, cap operators.Capability) bool {
+	op, ok := s.operators.Get(username)
+	if !ok {
+		return false
+	}
+	return operators.HasCapability(op.Capabilities, cap)
+}
+
+func (s *Server) requireCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "bad_form", "could not read form")
+			return
+		}
+		want := s.csrfToken(r)
+		got := r.PostFormValue(csrfFieldName)
+		if want == "" || got == "" || len(got) != len(want) || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+			writeJSONError(w, http.StatusForbidden, "csrf", "invalid CSRF token")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // loginPage is the login view model.
@@ -230,7 +296,9 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 
 // safeNext keeps post-login redirects local-only (no open redirect).
 func safeNext(p string) string {
-	if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+	if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.Contains(p, "\\") || strings.ContainsFunc(p, func(r rune) bool {
+		return r < 0x20 || r == 0x7f
+	}) {
 		return "/"
 	}
 	return p

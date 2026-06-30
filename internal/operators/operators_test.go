@@ -25,6 +25,9 @@ func TestBootstrapAuthenticateAndUpdate(t *testing.T) {
 	if snap.Username != "admin" || snap.LastLoginMS != now.UnixMilli() {
 		t.Fatalf("unexpected snapshot: %+v", snap)
 	}
+	if !HasCapability(snap.Capabilities, CapabilityOperatorManage) {
+		t.Fatalf("bootstrap operator missing capabilities: %+v", snap.Capabilities)
+	}
 	if err := st.UpdateProfile("admin", "Root Operator", "root@example.test", now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +42,10 @@ func TestCreateAndChangePassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Create("alice", "Alice", "alice@example.test", "pw1", time.Unix(2, 0)); err != nil {
+	if err := st.Create("alice", "Alice", "alice@example.test", "pw1", []Capability{CapabilityFleetView}, time.Unix(2, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Create("alice", "Alice", "", "pw1", time.Unix(2, 0)); !errors.Is(err, ErrDuplicate) {
+	if err := st.Create("alice", "Alice", "", "pw1", []Capability{CapabilityFleetView}, time.Unix(2, 0)); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate err = %v, want ErrDuplicate", err)
 	}
 	if _, ok := st.Authenticate("alice", "pw1", time.Unix(3, 0)); !ok {
@@ -59,6 +62,32 @@ func TestCreateAndChangePassword(t *testing.T) {
 	}
 	if _, ok := st.Authenticate("alice", "pw2", time.Unix(5, 0)); !ok {
 		t.Fatal("new password did not authenticate")
+	}
+}
+
+func TestCapabilitiesPersistAndNormalize(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir, "admin", "secret", time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Create("alice", "Alice", "", "pw1", []Capability{CapabilityTokenManage, CapabilityTokenManage, "bad"}, time.Unix(2, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateProfileAndCapabilities("alice", "Alice", "alice@example.test", []Capability{CapabilityFleetView, CapabilityOperatorManage}, time.Unix(3, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err = Open(dir, "ignored", "ignored", time.Unix(4, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, ok := st.Get("alice")
+	if !ok {
+		t.Fatal("missing alice")
+	}
+	if len(alice.Capabilities) != 2 || !HasCapability(alice.Capabilities, CapabilityFleetView) || !HasCapability(alice.Capabilities, CapabilityOperatorManage) {
+		t.Fatalf("unexpected capabilities: %+v", alice.Capabilities)
 	}
 }
 

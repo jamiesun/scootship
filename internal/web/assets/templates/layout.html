@@ -15,28 +15,24 @@
       </a>
     </div>
     <nav class="side-nav">
-      <a class="nav-item {{if eq .Active "fleet"}}active{{end}}" href="/" title="{{t .Lang "page.fleet"}}">
+      {{if .CanViewFleet}}<a class="nav-item {{if eq .Active "fleet"}}active{{end}}" href="/" title="{{t .Lang "page.fleet"}}">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span class="nav-label">{{t .Lang "page.fleet"}}</span>
-      </a>
-      <a class="nav-item {{if eq .Active "tokens"}}active{{end}}" href="/tokens" title="{{t .Lang "tokens.inventory"}}">
+      </a>{{end}}
+      {{if .CanManageTokens}}<a class="nav-item {{if eq .Active "tokens"}}active{{end}}" href="/tokens" title="{{t .Lang "tokens.inventory"}}">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-3-3L21 2z"/><path d="M15 7l2 2"/></svg>
         <span class="nav-label">{{t .Lang "page.tokens"}}</span>
-      </a>
-      <a class="nav-item {{if eq .Active "operators"}}active{{end}}" href="/operators" title="{{t .Lang "page.operators"}}">
+      </a>{{end}}
+      {{if .CanManageOperators}}<a class="nav-item {{if eq .Active "operators"}}active{{end}}" href="/operators" title="{{t .Lang "page.operators"}}">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="nav-label">{{t .Lang "page.operators"}}</span>
-      </a>
+      </a>{{end}}
 
       <span class="nav-item disabled" title="{{t .Lang "layout.dispatch_title"}}">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         <span class="nav-label">{{t .Lang "layout.dispatch"}}</span>
         <span class="soon">E2</span>
       </span>
-      <a class="nav-item" href="/healthz" title="{{t .Lang "layout.health"}}" target="_blank" rel="noopener">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        <span class="nav-label">{{t .Lang "layout.health"}}</span>
-      </a>
     </nav>
     <div class="side-bottom">
       <details class="settings-menu {{if or (eq .Active "settings") (eq .Active "operators") (eq .Active "account")}}active{{end}}">
@@ -47,7 +43,7 @@
         </summary>
         <div class="settings-pop">
           <a class="settings-item {{if eq .Active "settings"}}active{{end}}" href="/settings">{{t .Lang "page.settings"}}</a>
-          <a class="settings-item {{if eq .Active "operators"}}active{{end}}" href="/operators">{{t .Lang "page.operators"}}</a>
+          {{if .CanManageOperators}}<a class="settings-item {{if eq .Active "operators"}}active{{end}}" href="/operators">{{t .Lang "page.operators"}}</a>{{end}}
           <a class="settings-item {{if eq .Active "account"}}active{{end}}" href="/account">{{t .Lang "page.account"}}</a>
         </div>
       </details>
@@ -68,6 +64,7 @@
       </nav>
       <label class="auto"><input type="checkbox" id="autorefresh" checked> {{t .Lang "layout.auto_refresh"}}</label>
       <form class="topbar-logout" method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button class="logout logout-top" type="submit" title="{{t .Lang "layout.sign_out"}}">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span>{{t .Lang "layout.sign_out"}}</span>

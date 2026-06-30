@@ -80,6 +80,54 @@ func loginClient(t *testing.T, base string) *http.Client {
 	return c
 }
 
+func csrfToken(t *testing.T, c *http.Client, base, path string) string {
+	t.Helper()
+	resp, err := c.Get(base + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("csrf source %s status=%d body=%s", path, resp.StatusCode, body)
+	}
+	const marker = `name="csrf_token" value="`
+	text := string(body)
+	i := strings.Index(text, marker)
+	if i < 0 {
+		t.Fatalf("missing csrf token in %s: %s", path, body)
+	}
+	i += len(marker)
+	j := strings.Index(text[i:], `"`)
+	if j < 0 {
+		t.Fatalf("unterminated csrf token in %s", path)
+	}
+	return text[i : i+j]
+}
+
+func revealedTokenSecret(t *testing.T, body string) string {
+	t.Helper()
+	const marker = `<div class="mono secret-value">`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("missing token secret reveal: %s", body)
+	}
+	i += len(marker)
+	j := strings.Index(body[i:], "</div>")
+	if j < 0 {
+		t.Fatalf("unterminated token secret reveal: %s", body)
+	}
+	return body[i : i+j]
+}
+
+func allCapabilities() []string {
+	return []string{
+		string(operators.CapabilityFleetView),
+		string(operators.CapabilityTokenManage),
+		string(operators.CapabilityOperatorManage),
+	}
+}
+
 func envBytes(t *testing.T, typ, node string, body any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(body)
@@ -495,6 +543,102 @@ func TestDashboardRequiresLogin(t *testing.T) {
 	}
 }
 
+func TestDashboardPostRequiresCSRF(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+
+	resp, err := client.PostForm(ts.URL+"/account", url.Values{
+		"display_name": {"Root"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("missing csrf got %d want 403", resp.StatusCode)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/account", url.Values{
+		"display_name": {"Root"},
+		"csrf_token":   {"bad"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad csrf got %d want 403", resp.StatusCode)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/account", url.Values{
+		"display_name": {"Root"},
+		"csrf_token":   {csrfToken(t, client, ts.URL, "/account")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("valid csrf got %d want 200", resp.StatusCode)
+	}
+}
+
+func TestOperatorCapabilitiesGateAdminSurfaces(t *testing.T) {
+	ts, _ := newTestServer(t)
+	admin := loginClient(t, ts.URL)
+
+	resp, err := admin.PostForm(ts.URL+"/operators", url.Values{
+		"username":         {"viewer"},
+		"display_name":     {"Viewer"},
+		"password":         {"viewer-pass"},
+		"confirm_password": {"viewer-pass"},
+		"capabilities":     {string(operators.CapabilityFleetView)},
+		"csrf_token":       {csrfToken(t, admin, ts.URL, "/operators/new")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create viewer status=%d", resp.StatusCode)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	viewer := &http.Client{Jar: jar}
+	resp, err = viewer.PostForm(ts.URL+"/login", url.Values{
+		"user":     {"viewer"},
+		"password": {"viewer-pass"},
+		"next":     {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/" {
+		t.Fatalf("viewer login failed: status=%d path=%s", resp.StatusCode, resp.Request.URL.Path)
+	}
+
+	for _, path := range []string{"/tokens", "/operators", "/api/tokens", "/api/operators"} {
+		resp, err := viewer.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("viewer GET %s got %d want 403", path, resp.StatusCode)
+		}
+	}
+
+	resp, err = viewer.Get(ts.URL + "/api/fleet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("viewer fleet API got %d want 200", resp.StatusCode)
+	}
+}
+
 func TestDashboardLanguageSwitch(t *testing.T) {
 	ts, _ := newTestServer(t)
 
@@ -688,6 +832,8 @@ func TestOperatorManagementFlow(t *testing.T) {
 		"email":            {"alice@example.test"},
 		"password":         {"alice-pass"},
 		"confirm_password": {"alice-pass"},
+		"capabilities":     allCapabilities(),
+		"csrf_token":       {csrfToken(t, client, ts.URL, "/operators/new")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -718,6 +864,7 @@ func TestOperatorManagementFlow(t *testing.T) {
 		"action":           {"password"},
 		"new_password":     {"alice-new"},
 		"confirm_password": {"alice-new"},
+		"csrf_token":       {csrfToken(t, client, ts.URL, "/operators/alice")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -750,6 +897,7 @@ func TestAccountPasswordChange(t *testing.T) {
 		"current_password": {"testpass"},
 		"new_password":     {"changed"},
 		"confirm_password": {"changed"},
+		"csrf_token":       {csrfToken(t, client, ts.URL, "/account")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -780,7 +928,9 @@ func TestLogout(t *testing.T) {
 		t.Fatal("expected nodes key while logged in")
 	}
 
-	resp, err := client.PostForm(ts.URL+"/logout", nil)
+	resp, err := client.PostForm(ts.URL+"/logout", url.Values{
+		"csrf_token": {csrfToken(t, client, ts.URL, "/")},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -891,16 +1041,35 @@ func TestTokenInventoryDoesNotExposeSecrets(t *testing.T) {
 	}
 }
 
-func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
+func TestTokenLifecycleFlowRevealsGeneratedSecretsOnlyOnce(t *testing.T) {
+	const generatedTokenMinLength = 32
+
 	ts, _ := newTestServer(t)
 	client := loginClient(t, ts.URL)
-	createdSecret := "alpha-managed-token-0002"
-	rotatedSecret := "beta-managed-token-0002"
 
-	resp, err := client.PostForm(ts.URL+"/tokens", url.Values{
-		"node_id":       {"n-2"},
-		"token":         {createdSecret},
-		"confirm_token": {createdSecret},
+	resp, err := client.Get(ts.URL + "/tokens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(body), `name="node_id"`) {
+		t.Fatalf("tokens list should not render create form: %s", body)
+	}
+
+	resp, err = client.Get(ts.URL + "/tokens/new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `name="node_id"`) {
+		t.Fatalf("tokens new page missing create form: status=%d body=%s", resp.StatusCode, body)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/tokens", url.Values{
+		"node_id":    {"n-2"},
+		"csrf_token": {csrfToken(t, client, ts.URL, "/tokens/new")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -910,12 +1079,13 @@ func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create token status=%d body=%s", resp.StatusCode, createBody)
 	}
-	if strings.Contains(string(createBody), createdSecret) {
-		t.Fatalf("create response leaked token secret: %s", createBody)
+	createdSecret := revealedTokenSecret(t, string(createBody))
+	if len(createdSecret) < generatedTokenMinLength {
+		t.Fatalf("generated token too short: %q", createdSecret)
 	}
 
 	status := protocol.StatusBody{ScootVersion: "0.9.0"}
-	resp, body := postTelemetry(t, ts.URL, createdSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
+	resp, body = postTelemetry(t, ts.URL, createdSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("created token telemetry status=%d body=%s", resp.StatusCode, body)
 	}
@@ -940,8 +1110,7 @@ func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
 	}
 
 	resp, err = client.PostForm(ts.URL+"/tokens/n-2/rotate", url.Values{
-		"token":         {rotatedSecret},
-		"confirm_token": {rotatedSecret},
+		"csrf_token": {csrfToken(t, client, ts.URL, "/tokens")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -951,8 +1120,12 @@ func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("rotate token status=%d body=%s", resp.StatusCode, rotateBody)
 	}
-	if strings.Contains(string(rotateBody), rotatedSecret) || strings.Contains(string(rotateBody), createdSecret) {
-		t.Fatalf("rotate response leaked token secret: %s", rotateBody)
+	if strings.Contains(string(rotateBody), createdSecret) {
+		t.Fatalf("rotate response leaked previous token secret: %s", rotateBody)
+	}
+	rotatedSecret := revealedTokenSecret(t, string(rotateBody))
+	if rotatedSecret == createdSecret || len(rotatedSecret) < generatedTokenMinLength {
+		t.Fatalf("bad rotated token: created=%q rotated=%q", createdSecret, rotatedSecret)
 	}
 	resp, _ = postTelemetry(t, ts.URL, createdSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -963,7 +1136,9 @@ func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
 		t.Fatalf("rotated token telemetry status=%d body=%s", resp.StatusCode, body)
 	}
 
-	resp, err = client.PostForm(ts.URL+"/tokens/n-2/revoke", nil)
+	resp, err = client.PostForm(ts.URL+"/tokens/n-2/revoke", url.Values{
+		"csrf_token": {csrfToken(t, client, ts.URL, "/tokens")},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -978,6 +1153,27 @@ func TestTokenLifecycleFlowDoesNotExposeSecrets(t *testing.T) {
 	resp, _ = postTelemetry(t, ts.URL, rotatedSecret, envBytes(t, protocol.TypeStatus, "n-2", status))
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("revoked token got %d want 401", resp.StatusCode)
+	}
+}
+
+func TestSidebarOmitsHealthNavigation(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := loginClient(t, ts.URL)
+
+	resp, err := client.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fleet page status=%d body=%s", resp.StatusCode, body)
+	}
+	text := string(body)
+	for _, unwanted := range []string{`href="/healthz"`, `target="_blank"`, `id="healthCheck"`, `id="healthPanel"`} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("sidebar should not expose health navigation %q: %s", unwanted, body)
+		}
 	}
 }
 

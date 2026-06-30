@@ -34,7 +34,7 @@ Important files:
 | Path | Contents | Required protection |
 | --- | --- | --- |
 | `SCOOTSHIP_DATA_DIR/center.jsonl` | append-only telemetry and audit store | private data directory; backup as sensitive |
-| `SCOOTSHIP_DATA_DIR/operators.json` | dashboard operator records with password hashes | `0600`, backup as sensitive |
+| `SCOOTSHIP_DATA_DIR/operators.json` | dashboard operator records with password hashes and direct capabilities | `0600`, backup as sensitive |
 | `SCOOTSHIP_DATA_DIR/managed_node_tokens.json` | center-managed node token secrets and revocations | `0600`, backup as secret material |
 | `SCOOTSHIP_NODE_TOKENS_FILE` | optional static node token JSON | regular private file, no group/world/executable bits |
 | TLS private key | direct HTTPS key when used | private key handling; never commit or log |
@@ -73,6 +73,17 @@ sudo chmod 0640 /etc/scootship/scootship.env
 `SCOOTSHIP_ADMIN_PASSWORD` is only used to bootstrap the first operator when
 `operators.json` is empty. After bootstrap, manage operators from the dashboard. Do not leave a
 real password in shell history.
+
+Bootstrap and legacy operators receive all current built-in capabilities
+(`fleet:view`, `tokens:manage`, `operators:manage`) so an upgrade cannot lock out the governance
+surface. New operators should be granted only the capabilities they need.
+
+Dashboard token management generates node bearer tokens on the center side. The generated secret is
+shown once after create or rotate; after that the dashboard and API expose only the node id, source,
+fingerprint, and authentication activity. Copy the generated secret into the edge configuration for
+the same node id. The current `scoot-edge` client sends it as `Authorization: Bearer <token>`; for
+local protocol testing this is `SCOOT_EDGE_TOKEN=<secret>` together with `--node-id <node>` and the
+center `/telemetry` URL.
 
 ## systemd Unit
 
