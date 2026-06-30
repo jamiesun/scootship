@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -276,5 +277,193 @@ func TestReplayRebuildsAuditRetentionGap(t *testing.T) {
 	}
 	if events := m2.AuditEvents("n-1", 0); len(events) != 1 || events[0].Event.Seq != 1 {
 		t.Fatalf("retained replay events wrong: %+v", events)
+	}
+}
+
+func TestDispatchQueueLeasesNodeBoundJobs(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if err := m.UpsertStatus("n-1", 1000, 900, protocol.StatusBody{
+		PolicyCeiling: protocol.PolicyReadonly,
+		Node: &protocol.NodeDescriptor{
+			Labels: []string{"role:db"},
+			Capabilities: &protocol.Capabilities{
+				Tools:  []string{"grep"},
+				Skills: []string{"log-triage"},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertStatus("n-2", 1000, 900, protocol.StatusBody{PolicyCeiling: protocol.PolicyUnrestricted}); err != nil {
+		t.Fatal(err)
+	}
+
+	job, dup, err := m.EnqueueJob(1100, DispatchRequest{
+		JobID:           "j-1",
+		IdemKey:         "idem-1",
+		NodeID:          "n-1",
+		Goal:            "summarize audit anomalies",
+		RequestedPolicy: protocol.PolicyUnrestricted,
+		DeadlineTS:      10_000,
+		Requestor:       "admin",
+		RequiredLabels:  []string{"role:db"},
+		RequiredTools:   []string{"grep"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dup {
+		t.Fatal("first enqueue reported duplicate")
+	}
+	if job.RequestedPolicy != protocol.PolicyReadonly {
+		t.Fatalf("policy not clamped to node ceiling: %+v", job)
+	}
+
+	dupJob, dup, err := m.EnqueueJob(1200, DispatchRequest{
+		JobID:      "j-other",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "different",
+		DeadlineTS: 10_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dup || dupJob.JobID != "j-1" {
+		t.Fatalf("idem duplicate did not return original job: dup=%v job=%+v", dup, dupJob)
+	}
+
+	none, err := m.LeaseJobs("n-2", 1, 1300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("wrong node leased job: %+v", none)
+	}
+
+	got, err := m.LeaseJobs("n-1", 1, 1300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("leased %d jobs, want 1", len(got))
+	}
+	if got[0].Type != protocol.TypeJob || got[0].NodeID != "n-1" {
+		t.Fatalf("bad lease envelope: %+v", got[0])
+	}
+	var body protocol.JobBody
+	if err := json.Unmarshal(got[0].Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.JobID != "j-1" || body.RequestedPolicy != protocol.PolicyReadonly || body.Kind != protocol.JobKindRun {
+		t.Fatalf("bad job body: %+v", body)
+	}
+	after, ok := m.Job("j-1")
+	if !ok || after.Phase != dispatchLeased || after.Attempts != 1 {
+		t.Fatalf("job not marked leased: %+v ok=%v", after, ok)
+	}
+}
+
+func TestDispatchQueueRejectsCapabilityMismatch(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if err := m.UpsertStatus("n-1", 1000, 900, protocol.StatusBody{
+		PolicyCeiling: protocol.PolicyReadonly,
+		Node: &protocol.NodeDescriptor{
+			Labels:       []string{"role:web"},
+			Capabilities: &protocol.Capabilities{Tools: []string{"grep"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.EnqueueJob(1100, DispatchRequest{
+		JobID:          "j-1",
+		IdemKey:        "idem-1",
+		NodeID:         "n-1",
+		Goal:           "read logs",
+		DeadlineTS:     10_000,
+		RequiredLabels: []string{"role:db"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.LeaseJobs("n-1", 1, 1200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("mismatched job leased: %+v", got)
+	}
+	job, ok := m.Job("j-1")
+	if !ok || job.Phase != protocol.JobPhaseRejected || job.RejectReason != "no_matching_capability" {
+		t.Fatalf("mismatched job not rejected: %+v ok=%v", job, ok)
+	}
+}
+
+func TestDispatchReplayRebuildsJobs(t *testing.T) {
+	dir := t.TempDir()
+	m, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertStatus("n-1", 1000, 900, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.EnqueueJob(1100, DispatchRequest{
+		JobID:      "j-1",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "summarize",
+		DeadlineTS: 10_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.LeaseJobs("n-1", 1, 1200); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RecordJobEvent("n-1", 1300, protocol.JobEventBody{
+		JobID:           "j-1",
+		Phase:           protocol.JobPhaseRunning,
+		SessionID:       "s-1",
+		EffectivePolicy: protocol.PolicyReadonly,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	m2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m2.Close()
+	job, ok := m2.Job("j-1")
+	if !ok {
+		t.Fatal("job lost after replay")
+	}
+	if job.Phase != protocol.JobPhaseRunning || job.SessionID != "s-1" || job.EffectivePolicy != protocol.PolicyReadonly {
+		t.Fatalf("job lifecycle not rebuilt: %+v", job)
+	}
+	dup, duplicate, err := m2.EnqueueJob(1400, DispatchRequest{
+		JobID:      "j-other",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "duplicate",
+		DeadlineTS: 10_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !duplicate || dup.JobID != "j-1" {
+		t.Fatalf("idem index not rebuilt: duplicate=%v job=%+v", duplicate, dup)
 	}
 }

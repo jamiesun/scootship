@@ -3,10 +3,12 @@ package store
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/jamiesun/scootship/internal/protocol"
@@ -31,20 +33,24 @@ type Options struct {
 // persistRecord is one line in the append-only log. Exactly one payload field is
 // set per record, selected by Rec.
 type persistRecord struct {
-	Rec    string                 `json:"rec"`
-	NodeID string                 `json:"node_id"`
-	RecvMS int64                  `json:"recv_ms"`
-	SentTS int64                  `json:"sent_ts,omitempty"`
-	Status *protocol.StatusBody   `json:"status,omitempty"`
-	Cursor *protocol.Cursor       `json:"cursor,omitempty"`
-	Events []protocol.AuditEvent  `json:"events,omitempty"`
-	Job    *protocol.JobEventBody `json:"job_event,omitempty"`
+	Rec      string                 `json:"rec"`
+	NodeID   string                 `json:"node_id"`
+	RecvMS   int64                  `json:"recv_ms"`
+	SentTS   int64                  `json:"sent_ts,omitempty"`
+	Status   *protocol.StatusBody   `json:"status,omitempty"`
+	Cursor   *protocol.Cursor       `json:"cursor,omitempty"`
+	Events   []protocol.AuditEvent  `json:"events,omitempty"`
+	Job      *protocol.JobEventBody `json:"job_event,omitempty"`
+	Dispatch *DispatchJob           `json:"dispatch_job,omitempty"`
 }
 
 const (
-	recStatus   = "status"
-	recAudit    = "audit_batch"
-	recJobEvent = "job_event"
+	recStatus      = "status"
+	recAudit       = "audit_batch"
+	recJobEvent    = "job_event"
+	recDispatchJob = "dispatch_job"
+	dispatchQueued = "queued"
+	dispatchLeased = "leased"
 )
 
 type nodeState struct {
@@ -54,11 +60,14 @@ type nodeState struct {
 
 // Mem is an in-memory fleet view backed by an append-only JSONL log.
 type Mem struct {
-	mu      sync.Mutex
-	nodes   map[string]*nodeState
-	file    *os.File
-	w       *bufio.Writer
-	options Options
+	mu       sync.Mutex
+	nodes    map[string]*nodeState
+	jobs     map[string]*DispatchJob
+	idem     map[string]string
+	jobOrder []string
+	file     *os.File
+	w        *bufio.Writer
+	options  Options
 }
 
 var _ Store = (*Mem)(nil)
@@ -72,7 +81,12 @@ func Open(dataDir string) (*Mem, error) {
 
 // OpenWithOptions is Open plus explicit store retention settings.
 func OpenWithOptions(dataDir string, opts Options) (*Mem, error) {
-	m := &Mem{nodes: make(map[string]*nodeState), options: normalizeOptions(opts)}
+	m := &Mem{
+		nodes:   make(map[string]*nodeState),
+		jobs:    make(map[string]*DispatchJob),
+		idem:    make(map[string]string),
+		options: normalizeOptions(opts),
+	}
 	if dataDir == "" {
 		return m, nil
 	}
@@ -140,6 +154,10 @@ func (m *Mem) applyRecord(rec persistRecord) {
 	case recJobEvent:
 		if rec.Job != nil {
 			m.applyJobEvent(rec.NodeID, rec.RecvMS, *rec.Job)
+		}
+	case recDispatchJob:
+		if rec.Dispatch != nil {
+			m.applyDispatchJob(*rec.Dispatch)
 		}
 	}
 }
@@ -221,10 +239,39 @@ func (m *Mem) applyAuditRetention(ns *nodeState, recvMS int64) {
 	}
 }
 
-func (m *Mem) applyJobEvent(nodeID string, recvMS int64, _ protocol.JobEventBody) {
+func (m *Mem) applyJobEvent(nodeID string, recvMS int64, body protocol.JobEventBody) {
 	ns := m.node(nodeID)
 	if recvMS > ns.view.LastSeenMS {
 		ns.view.LastSeenMS = recvMS
+	}
+	job := m.jobs[body.JobID]
+	if job == nil {
+		return
+	}
+	if isTerminalDispatchPhase(job.Phase) && body.Phase != job.Phase {
+		return
+	}
+	job.Phase = body.Phase
+	job.UpdatedMS = recvMS
+	if body.SessionID != "" {
+		job.SessionID = body.SessionID
+	}
+	if body.EffectivePolicy != "" {
+		job.EffectivePolicy = body.EffectivePolicy
+	}
+	if body.RejectReason != "" {
+		job.RejectReason = body.RejectReason
+	}
+}
+
+func (m *Mem) applyDispatchJob(job DispatchJob) {
+	j := job
+	if _, ok := m.jobs[j.JobID]; !ok {
+		m.jobOrder = append(m.jobOrder, j.JobID)
+	}
+	m.jobs[j.JobID] = &j
+	if j.IdemKey != "" {
+		m.idem[j.IdemKey] = j.JobID
 	}
 }
 
@@ -290,6 +337,180 @@ func (m *Mem) RecordJobEvent(nodeID string, recvMS int64, body protocol.JobEvent
 	}
 	m.applyJobEvent(nodeID, recvMS, body)
 	return nil
+}
+
+// EnqueueJob implements Store.
+func (m *Mem) EnqueueJob(recvMS int64, req DispatchRequest) (DispatchJob, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id := m.idem[req.IdemKey]; id != "" {
+		return cloneDispatchJob(*m.jobs[id]), true, nil
+	}
+	job, err := m.buildDispatchJobLocked(recvMS, req)
+	if err != nil {
+		return DispatchJob{}, false, err
+	}
+	if err := m.persistDispatchJobLocked(job); err != nil {
+		return DispatchJob{}, false, err
+	}
+	m.applyDispatchJob(job)
+	return cloneDispatchJob(job), false, nil
+}
+
+func (m *Mem) buildDispatchJobLocked(recvMS int64, req DispatchRequest) (DispatchJob, error) {
+	if strings.TrimSpace(req.JobID) == "" {
+		return DispatchJob{}, errors.New("missing job_id")
+	}
+	if strings.TrimSpace(req.IdemKey) == "" {
+		return DispatchJob{}, errors.New("missing idem_key")
+	}
+	if _, exists := m.jobs[req.JobID]; exists {
+		return DispatchJob{}, fmt.Errorf("duplicate job_id %q", req.JobID)
+	}
+	node, ok := m.nodes[req.NodeID]
+	if !ok {
+		return DispatchJob{}, fmt.Errorf("unknown node %q", req.NodeID)
+	}
+	policy, err := clampDispatchPolicy(req.RequestedPolicy, node.view.PolicyCeiling)
+	if err != nil {
+		return DispatchJob{}, err
+	}
+	job := DispatchJob{
+		JobID:           req.JobID,
+		IdemKey:         req.IdemKey,
+		NodeID:          req.NodeID,
+		Kind:            protocol.JobKindRun,
+		Goal:            req.Goal,
+		RequestedPolicy: policy,
+		DeadlineTS:      req.DeadlineTS,
+		MaxRetries:      req.MaxRetries,
+		Requestor:       req.Requestor,
+		RequiredLabels:  cloneStrings(req.RequiredLabels),
+		RequiredTools:   cloneStrings(req.RequiredTools),
+		RequiredSkills:  cloneStrings(req.RequiredSkills),
+		Phase:           dispatchQueued,
+		CreatedMS:       recvMS,
+		UpdatedMS:       recvMS,
+	}
+	if err := job.Body().Validate(); err != nil {
+		return DispatchJob{}, err
+	}
+	return job, nil
+}
+
+// LeaseJobs implements Store.
+func (m *Mem) LeaseJobs(nodeID string, capacity int, recvMS int64) ([]protocol.Envelope, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if capacity <= 0 {
+		return nil, errors.New("capacity must be positive")
+	}
+	node, ok := m.nodes[nodeID]
+	if !ok {
+		return nil, nil
+	}
+	out := make([]protocol.Envelope, 0, capacity)
+	for _, id := range m.jobOrder {
+		if len(out) >= capacity {
+			break
+		}
+		job := m.jobs[id]
+		if job == nil || job.NodeID != nodeID || job.Phase != dispatchQueued {
+			continue
+		}
+		if job.DeadlineTS <= recvMS {
+			if err := m.rejectDispatchJobLocked(job, recvMS, "deadline_exceeded"); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if !dispatchMatchesNode(*job, node.view) {
+			if err := m.rejectDispatchJobLocked(job, recvMS, "no_matching_capability"); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		leased := cloneDispatchJob(*job)
+		env, err := dispatchEnvelope(nodeID, recvMS, leased)
+		if err != nil {
+			return nil, err
+		}
+		leased.Phase = dispatchLeased
+		leased.Attempts++
+		leased.LeasedMS = recvMS
+		leased.UpdatedMS = recvMS
+		if err := m.persistDispatchJobLocked(leased); err != nil {
+			return nil, err
+		}
+		m.applyDispatchJob(leased)
+		out = append(out, env)
+	}
+	return out, nil
+}
+
+func (m *Mem) rejectDispatchJobLocked(job *DispatchJob, recvMS int64, reason string) error {
+	rejected := cloneDispatchJob(*job)
+	rejected.Phase = protocol.JobPhaseRejected
+	rejected.RejectReason = reason
+	rejected.UpdatedMS = recvMS
+	if err := m.persistDispatchJobLocked(rejected); err != nil {
+		return err
+	}
+	m.applyDispatchJob(rejected)
+	return nil
+}
+
+func dispatchEnvelope(nodeID string, sentMS int64, job DispatchJob) (protocol.Envelope, error) {
+	body := job.Body()
+	if err := body.Validate(); err != nil {
+		return protocol.Envelope{}, err
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return protocol.Envelope{}, err
+	}
+	return protocol.Envelope{
+		V:      protocol.Version,
+		Type:   protocol.TypeJob,
+		NodeID: nodeID,
+		SentTS: sentMS,
+		Body:   raw,
+	}, nil
+}
+
+func (m *Mem) persistDispatchJobLocked(job DispatchJob) error {
+	j := cloneDispatchJob(job)
+	return m.persist(persistRecord{Rec: recDispatchJob, NodeID: job.NodeID, RecvMS: job.UpdatedMS, Dispatch: &j})
+}
+
+// Jobs implements Store.
+func (m *Mem) Jobs() []DispatchJob {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]DispatchJob, 0, len(m.jobs))
+	for _, id := range m.jobOrder {
+		if job := m.jobs[id]; job != nil {
+			out = append(out, cloneDispatchJob(*job))
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].UpdatedMS != out[j].UpdatedMS {
+			return out[i].UpdatedMS > out[j].UpdatedMS
+		}
+		return out[i].JobID < out[j].JobID
+	})
+	return out
+}
+
+// Job implements Store.
+func (m *Mem) Job(jobID string) (DispatchJob, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	job := m.jobs[jobID]
+	if job == nil {
+		return DispatchJob{}, false
+	}
+	return cloneDispatchJob(*job), true
 }
 
 // Nodes implements Store.
@@ -429,6 +650,106 @@ func incrementAuditStats(stats *protocol.AuditStats, kind string) {
 	case "system_error":
 		stats.SystemError++
 	}
+}
+
+func clampDispatchPolicy(requested, ceiling string) (string, error) {
+	if requested == "" {
+		requested = protocol.PolicyReadonly
+	}
+	if ceiling == "" {
+		ceiling = protocol.PolicyReadonly
+	}
+	reqRank, ok := policyRank(requested)
+	if !ok {
+		return "", fmt.Errorf("unsupported requested_policy %q", requested)
+	}
+	ceilRank, ok := policyRank(ceiling)
+	if !ok {
+		return "", fmt.Errorf("unsupported node policy_ceiling %q", ceiling)
+	}
+	if reqRank > ceilRank {
+		requested = ceiling
+	}
+	// Edge jobs are unattended; guarded has no meaningful prompt boundary and
+	// collapses to readonly in Scoot's clamp. Match that on the center side.
+	if requested == protocol.PolicyGuarded {
+		requested = protocol.PolicyReadonly
+	}
+	return requested, nil
+}
+
+func policyRank(policy string) (int, bool) {
+	switch policy {
+	case protocol.PolicyReadonly:
+		return 0, true
+	case protocol.PolicyGuarded:
+		return 1, true
+	case protocol.PolicyUnrestricted:
+		return 2, true
+	default:
+		return 0, false
+	}
+}
+
+func dispatchMatchesNode(job DispatchJob, node NodeView) bool {
+	desc := node.Descriptor
+	if len(job.RequiredLabels) > 0 {
+		if desc == nil || !containsAll(desc.Labels, job.RequiredLabels) {
+			return false
+		}
+	}
+	if len(job.RequiredTools) > 0 {
+		if desc == nil || desc.Capabilities == nil || !containsAll(desc.Capabilities.Tools, job.RequiredTools) {
+			return false
+		}
+	}
+	if len(job.RequiredSkills) > 0 {
+		if desc == nil || desc.Capabilities == nil || !containsAll(desc.Capabilities.Skills, job.RequiredSkills) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAll(have, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	set := make(map[string]bool, len(have))
+	for _, item := range have {
+		set[item] = true
+	}
+	for _, item := range want {
+		if !set[item] {
+			return false
+		}
+	}
+	return true
+}
+
+func isTerminalDispatchPhase(phase string) bool {
+	switch phase {
+	case protocol.JobPhaseDone, protocol.JobPhaseFailed, protocol.JobPhaseRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneDispatchJob(job DispatchJob) DispatchJob {
+	job.RequiredLabels = cloneStrings(job.RequiredLabels)
+	job.RequiredTools = cloneStrings(job.RequiredTools)
+	job.RequiredSkills = cloneStrings(job.RequiredSkills)
+	return job
+}
+
+func cloneStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
 }
 
 // Close implements Store.

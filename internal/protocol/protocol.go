@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Version is the only protocol major version scootship speaks. EDGE.md pins v:1.
@@ -193,6 +194,47 @@ type JobBody struct {
 	MaxRetries      int    `json:"max_retries"`
 }
 
+const (
+	JobKindRun = "run"
+
+	PolicyReadonly     = "readonly"
+	PolicyGuarded      = "guarded"
+	PolicyUnrestricted = "unrestricted"
+
+	JobPhaseAccepted = "accepted"
+	JobPhaseRunning  = "running"
+	JobPhaseDone     = "done"
+	JobPhaseFailed   = "failed"
+	JobPhaseRejected = "rejected"
+)
+
+// Validate checks a center-dispatched job without interpreting goal content. The
+// goal is opaque data for Scoot; the center must never turn it into shell/eval.
+func (b JobBody) Validate() error {
+	if strings.TrimSpace(b.JobID) == "" {
+		return errors.New("missing job_id")
+	}
+	if strings.TrimSpace(b.IdemKey) == "" {
+		return errors.New("missing idem_key")
+	}
+	if b.Kind != JobKindRun {
+		return fmt.Errorf("unsupported job kind %q", b.Kind)
+	}
+	if strings.TrimSpace(b.Goal) == "" {
+		return errors.New("missing goal")
+	}
+	if !ValidPolicy(b.RequestedPolicy) {
+		return fmt.Errorf("unsupported requested_policy %q", b.RequestedPolicy)
+	}
+	if b.DeadlineTS <= 0 {
+		return errors.New("missing deadline_ts")
+	}
+	if b.MaxRetries < 0 {
+		return errors.New("max_retries must be non-negative")
+	}
+	return nil
+}
+
 // JobEventBody reports a job's lifecycle back over the append-only channel.
 type JobEventBody struct {
 	JobID           string `json:"job_id"`
@@ -200,4 +242,31 @@ type JobEventBody struct {
 	SessionID       string `json:"session_id,omitempty"`
 	EffectivePolicy string `json:"effective_policy,omitempty"`
 	RejectReason    string `json:"reject_reason,omitempty"`
+}
+
+// Validate checks lifecycle reports before store mutation. Unknown phases are
+// rejected so dispatch state cannot silently drift as the edge contract evolves.
+func (b JobEventBody) Validate() error {
+	if strings.TrimSpace(b.JobID) == "" {
+		return errors.New("missing job_id")
+	}
+	switch b.Phase {
+	case JobPhaseAccepted, JobPhaseRunning, JobPhaseDone, JobPhaseFailed, JobPhaseRejected:
+	default:
+		return fmt.Errorf("unknown job phase %q", b.Phase)
+	}
+	if b.EffectivePolicy != "" && !ValidPolicy(b.EffectivePolicy) {
+		return fmt.Errorf("unsupported effective_policy %q", b.EffectivePolicy)
+	}
+	return nil
+}
+
+// ValidPolicy reports whether p is one of the EDGE.md policy labels.
+func ValidPolicy(p string) bool {
+	switch p {
+	case PolicyReadonly, PolicyGuarded, PolicyUnrestricted:
+		return true
+	default:
+		return false
+	}
 }

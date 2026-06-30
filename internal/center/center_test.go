@@ -511,6 +511,45 @@ func TestTelemetryFailureModesDoNotMutateStore(t *testing.T) {
 	}
 }
 
+func TestTelemetryJobEventUpdatesDispatchLifecycle(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.EnqueueJob(now+1, store.DispatchRequest{
+		JobID:      "j-1",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "summarize",
+		DeadlineTS: now + 60_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	event := protocol.JobEventBody{
+		JobID:           "j-1",
+		Phase:           protocol.JobPhaseRunning,
+		SessionID:       "s-1",
+		EffectivePolicy: protocol.PolicyReadonly,
+	}
+	resp, body := postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeJobEvent, "n-1", event))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("job_event status=%d body=%s", resp.StatusCode, body)
+	}
+	job, ok := st.Job("j-1")
+	if !ok {
+		t.Fatal("job missing")
+	}
+	if job.Phase != protocol.JobPhaseRunning || job.SessionID != "s-1" || job.EffectivePolicy != protocol.PolicyReadonly {
+		t.Fatalf("job lifecycle not updated: %+v", job)
+	}
+
+	bad := protocol.JobEventBody{JobID: "j-1", Phase: "teleported"}
+	resp, body = postTelemetry(t, ts.URL, "secret", envBytes(t, protocol.TypeJobEvent, "n-1", bad))
+	assertJSONError(t, resp, body, http.StatusBadRequest, "bad_job_event_body")
+}
+
 func TestDashboardRequiresLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
 
@@ -947,7 +986,7 @@ func TestLogout(t *testing.T) {
 	}
 }
 
-func TestLeaseIsObservationOnly(t *testing.T) {
+func TestLeaseReturnsNoJobsWhenQueueEmpty(t *testing.T) {
 	ts, _ := newTestServer(t)
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/jobs/lease?node=n-1&capacity=1", nil)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -961,10 +1000,65 @@ func TestLeaseIsObservationOnly(t *testing.T) {
 		t.Fatalf("lease status=%d", resp.StatusCode)
 	}
 	if strings.TrimSpace(string(body)) != "" {
-		t.Fatalf("phase 1 lease must dispatch no jobs, got %q", body)
+		t.Fatalf("empty queue lease must dispatch no jobs, got %q", body)
 	}
-	if got := resp.Header.Get("X-Scootship-Dispatch"); got != "disabled-phase1" {
-		t.Fatalf("expected dispatch disabled marker, got %q", got)
+	if got := resp.Header.Get("X-Scootship-Dispatch"); got != "enabled-phase2" {
+		t.Fatalf("expected phase2 dispatch marker, got %q", got)
+	}
+}
+
+func TestLeaseReturnsQueuedNodeBoundJob(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{
+		PolicyCeiling: protocol.PolicyReadonly,
+		Node: &protocol.NodeDescriptor{
+			Labels:       []string{"role:db"},
+			Capabilities: &protocol.Capabilities{Tools: []string{"grep"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.EnqueueJob(now+1, store.DispatchRequest{
+		JobID:          "j-1",
+		IdemKey:        "idem-1",
+		NodeID:         "n-1",
+		Goal:           "summarize audit anomalies",
+		DeadlineTS:     now + 60_000,
+		RequiredLabels: []string{"role:db"},
+		RequiredTools:  []string{"grep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/jobs/lease?node=n-1&capacity=1", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("lease status=%d body=%s", resp.StatusCode, body)
+	}
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("leased lines=%d body=%s", len(lines), body)
+	}
+	var env protocol.Envelope
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Type != protocol.TypeJob || env.NodeID != "n-1" {
+		t.Fatalf("bad lease envelope: %+v", env)
+	}
+	var job protocol.JobBody
+	if err := json.Unmarshal(env.Body, &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.JobID != "j-1" || job.Kind != protocol.JobKindRun || job.RequestedPolicy != protocol.PolicyReadonly {
+		t.Fatalf("bad leased job: %+v", job)
 	}
 }
 

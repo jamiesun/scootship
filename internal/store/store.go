@@ -76,6 +76,61 @@ type StoredJobEvent struct {
 	Body   protocol.JobEventBody `json:"body"`
 }
 
+// DispatchRequest is the center-side provenance record used to create one E2
+// job. It is deliberately node-targeted; broad fan-out belongs behind a later,
+// explicit operator workflow.
+type DispatchRequest struct {
+	JobID           string   `json:"job_id"`
+	IdemKey         string   `json:"idem_key"`
+	NodeID          string   `json:"node_id"`
+	Goal            string   `json:"goal"`
+	RequestedPolicy string   `json:"requested_policy"`
+	DeadlineTS      int64    `json:"deadline_ts"`
+	MaxRetries      int      `json:"max_retries"`
+	Requestor       string   `json:"requestor,omitempty"`
+	RequiredLabels  []string `json:"required_labels,omitempty"`
+	RequiredTools   []string `json:"required_tools,omitempty"`
+	RequiredSkills  []string `json:"required_skills,omitempty"`
+}
+
+// DispatchJob is one queued or completed E2 dispatch record. Goal is retained
+// for the edge lease body and provenance; never treat it as executable code.
+type DispatchJob struct {
+	JobID           string   `json:"job_id"`
+	IdemKey         string   `json:"idem_key"`
+	NodeID          string   `json:"node_id"`
+	Kind            string   `json:"kind"`
+	Goal            string   `json:"goal"`
+	RequestedPolicy string   `json:"requested_policy"`
+	DeadlineTS      int64    `json:"deadline_ts"`
+	MaxRetries      int      `json:"max_retries"`
+	Requestor       string   `json:"requestor,omitempty"`
+	RequiredLabels  []string `json:"required_labels,omitempty"`
+	RequiredTools   []string `json:"required_tools,omitempty"`
+	RequiredSkills  []string `json:"required_skills,omitempty"`
+	Phase           string   `json:"phase"`
+	Attempts        int      `json:"attempts"`
+	CreatedMS       int64    `json:"created_ms"`
+	UpdatedMS       int64    `json:"updated_ms"`
+	LeasedMS        int64    `json:"leased_ms,omitempty"`
+	SessionID       string   `json:"session_id,omitempty"`
+	EffectivePolicy string   `json:"effective_policy,omitempty"`
+	RejectReason    string   `json:"reject_reason,omitempty"`
+}
+
+// Body returns the wire body for /jobs/lease.
+func (j DispatchJob) Body() protocol.JobBody {
+	return protocol.JobBody{
+		JobID:           j.JobID,
+		IdemKey:         j.IdemKey,
+		Kind:            j.Kind,
+		Goal:            j.Goal,
+		RequestedPolicy: j.RequestedPolicy,
+		DeadlineTS:      j.DeadlineTS,
+		MaxRetries:      j.MaxRetries,
+	}
+}
+
 // Store is the center's append-only fleet view.
 type Store interface {
 	// UpsertStatus records a heartbeat and refreshes the node registry.
@@ -89,6 +144,19 @@ type Store interface {
 
 	// RecordJobEvent stores a job lifecycle report.
 	RecordJobEvent(nodeID string, recvMS int64, body protocol.JobEventBody) error
+
+	// EnqueueJob persists one dispatch job or returns an existing job for the
+	// same idem_key. It clamps requested_policy to the node's local ceiling.
+	EnqueueJob(recvMS int64, req DispatchRequest) (DispatchJob, bool, error)
+
+	// LeaseJobs returns up to capacity persisted jobs bound to nodeID.
+	LeaseJobs(nodeID string, capacity int, recvMS int64) ([]protocol.Envelope, error)
+
+	// Jobs returns every dispatch job, newest activity first.
+	Jobs() []DispatchJob
+
+	// Job returns one dispatch job by id.
+	Job(jobID string) (DispatchJob, bool)
 
 	// Nodes returns every known node, newest activity first.
 	Nodes() []NodeView

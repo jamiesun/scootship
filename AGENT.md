@@ -30,7 +30,8 @@ behavior, configuration, or scope must update the matching section in the Englis
 scootship is the **management center** for a fleet of [Scoot](https://github.com/jamiesun/scoot)
 agents. It implements the **center (server) side** of the frozen `scoot-edge` v1 contract
 (see Scoot's `docs/EDGE.md`): it ingests append-only telemetry over HTTP and serves an embedded
-admin dashboard from a single Go binary. Phase 1 is observation-only.
+admin dashboard from a single Go binary. Phase 2 center-side dispatch core is present, with
+operator-facing dispatch rollout still gated.
 
 ## Relationship to Scoot (read this first)
 
@@ -40,9 +41,9 @@ admin dashboard from a single Go binary. Phase 1 is observation-only.
 - **The protocol is frozen upstream.** `internal/protocol` is a faithful transcription of
   EDGE.md's `v:1` envelope and bodies. Do not invent fields or message types here. If the
   contract needs to change, that is an EDGE.md-level decision in the Scoot repo first.
-- **`scoot-edge` does not exist yet.** EDGE.md is E0 (design-only). There is no real edge to
-  test against, which is why `internal/mockedge` exists. Keep it a faithful *client* of the
-  contract — never a second implementation of Scoot.
+- **`scoot-edge` is optional and may lag the center contract.** Keep `internal/mockedge` as a
+  faithful *client* of the public contract for center-side tests — never a second implementation of
+  Scoot.
 - **Do not depend on Scoot internals.** scootship only ever speaks the public wire contract.
 
 ## Common commands
@@ -73,12 +74,12 @@ archives with checksums.
 | --- | --- |
 | `cmd/scootship/main.go` | CLI: `serve`, `mock-edge`, `version`; env-driven startup; signal-based shutdown. |
 | `internal/protocol` | The frozen scoot-edge v1 contract: envelope, status/audit/job bodies, idempotency cursor. The narrowest, most stable surface — change only to track EDGE.md. |
-| `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, bounded dashboard audit window, explicit retention gaps, and retained-window run timelines. |
+| `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, bounded dashboard audit window, explicit retention gaps, retained-window run timelines, and center-side dispatch queue/provenance snapshots. |
 | `internal/tokens` | Per-node bearer-token registry and private managed lifecycle overlay. The center's node auth surface; **not** node policy config. |
 | `internal/operators` | Dashboard operator accounts, direct built-in capabilities, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
-| `internal/center` | HTTP server, auth middleware, capability gates, CSRF checks, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, read-only health signals, dashboard login session, dashboard + JSON API. |
+| `internal/center` | HTTP server, auth middleware, capability gates, CSRF checks, login throttle + security headers, `/telemetry` ingest, node-bound `/jobs/lease` dispatch, read-only health signals, dashboard login session, dashboard + JSON API. |
 | `internal/center/server_run_test.go` | Runtime transport smoke coverage for direct TLS, explicit dev HTTP, and trusted TLS-proxy HTTP modes. |
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
@@ -130,19 +131,18 @@ the roadmap's non-goals as enforceable engineering rules.
 
 ## Phase boundaries
 
-- **Phase 1 (now): observation + framework.** `status` and `audit_batch` ingest, the fleet
+- **Phase 1 (landed): observation + framework.** `status` and `audit_batch` ingest, the fleet
   dashboard, node registry, per-node token auth/lifecycle, and the mock-edge harness.
-- **Phase 1.5 (current): E1 operational maturity before new power.** Keep tightening
-  production/dev transport, endpoint failure modes, audit retention/gap visibility, run audit
-  timelines, token lifecycle hardening, and read-only health signals before expanding the authority
-  surface.
-- **E2 (later, gated): job dispatch / orchestration.** The `/jobs/lease` endpoint is a stub
-  today. Building real dispatch means capability/label routing, the only-lower policy clamp,
-  idempotent `idem_key` apply, capacity backpressure, deadlines, and dispatch-provenance audit
-  joined to runs by `session_id`. Do not partially wire dispatch into Phase 1. Do not expose
-  partial dispatch UI/API, hidden feature flags, or admin-only bypasses until the roadmap's E2
-  dispatch gate is fully satisfied with code, tests, operator documentation, a compatible Scoot
-  readonly clamp, and a dispatch threat model.
+- **Phase 1.5 (landed): E1 operational maturity before new power.** Transport, endpoint failure
+  modes, audit retention/gap visibility, run audit timelines, token lifecycle hardening, and
+  read-only health signals are implemented and tested.
+- **E2 (current center-side core, rollout gated): job dispatch / orchestration.** The center can
+  persist direct node-targeted dispatch jobs, de-duplicate them by `idem_key`, clamp the requested
+  policy down to the node's reported ceiling, reject capability/label misses, lease only jobs bound
+  to the authenticated node, and update lifecycle from validated `job_event` telemetry. The
+  dashboard still exposes no operator dispatch form until the remaining edge-side rollout gate is
+  satisfied. Do not add broad fan-out, hidden feature flags, admin-only bypasses, raw command fields,
+  or any path that raises a node's ceiling.
 
 ## Extension workflow
 
