@@ -115,6 +115,43 @@ curl -fsS http://127.0.0.1:8080/healthz
 若使用直连 HTTPS，把 `SCOOTSHIP_BEHIND_TLS_PROXY=1` 换成 `SCOOTSHIP_TLS_CERT` 与
 `SCOOTSHIP_TLS_KEY`，将 `SCOOTSHIP_ADDR` 绑定到目标地址，并用 `https://` 验证。
 
+## 容器镜像
+
+发布 tag 会向 GHCR 发布多架构 Linux 镜像。Docker tag 不带 Git tag 前缀 `v`：
+
+```sh
+docker pull ghcr.io/jamiesun/scootship:X.Y.Z
+docker pull ghcr.io/jamiesun/scootship:X.Y.Z-alpine
+```
+
+镜像默认执行 `scootship serve`，监听 `:8080`，把状态写到 `/data`，并以非 root 用户运行。它保留
+二进制相同的传输 fail-closed 行为：必须设置直连 TLS、可信 TLS 反代模式，或仅本地测试时设置
+`SCOOTSHIP_DEV=1`。
+
+可信 TLS 反代后的示例：
+
+```sh
+sudo tee /etc/scootship/scootship.container.env >/dev/null <<'ENV'
+SCOOTSHIP_BEHIND_TLS_PROXY=1
+SCOOTSHIP_ADMIN_PASSWORD=replace-on-first-bootstrap-only
+SCOOTSHIP_NODE_TOKENS_FILE=/run/secrets/node-tokens.json
+ENV
+sudo chmod 0600 /etc/scootship/scootship.container.env
+
+docker volume create scootship-data
+docker run -d --name scootship \
+  -p 127.0.0.1:8080:8080 \
+  -v scootship-data:/data \
+  -v /etc/scootship/node-tokens.json:/run/secrets/node-tokens.json:ro \
+  --env-file /etc/scootship/scootship.container.env \
+  ghcr.io/jamiesun/scootship:X.Y.Z
+```
+
+若使用直连 HTTPS，还要把证书和私钥以只读方式挂载进容器，并将 `SCOOTSHIP_TLS_CERT` /
+`SCOOTSHIP_TLS_KEY` 指向容器内路径。不要把 `/data`、token 文件或 TLS 私钥写进镜像，也不要把真实密钥
+留在 shell 历史里。挂载的 token 与 TLS 文件必须能被容器用户（`uid 65532`）读取，但不要设成
+world-readable；可按部署方式使用专用组、宿主机 ACL 或 Docker secret。
+
 ## 反向代理注意事项
 
 使用反向代理时：
