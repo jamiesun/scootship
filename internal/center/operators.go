@@ -21,7 +21,8 @@ type accountPage struct {
 
 type operatorRow struct {
 	operators.Snapshot
-	LastLoginAgo string
+	LastLoginAgo     string
+	CapabilityLabels []string
 }
 
 type operatorsPage struct {
@@ -32,14 +33,22 @@ type operatorsPage struct {
 
 type operatorEditPage struct {
 	basePage
-	Operator operators.Snapshot
-	Profile  formMessage
-	Password formMessage
+	Operator          operators.Snapshot
+	CapabilityOptions []capabilityOption
+	Profile           formMessage
+	Password          formMessage
 }
 
 type operatorCreatePage struct {
 	basePage
-	Create formMessage
+	CapabilityOptions []capabilityOption
+	Create            formMessage
+}
+
+type capabilityOption struct {
+	Value   string
+	Label   string
+	Checked bool
 }
 
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -118,8 +127,10 @@ func (s *Server) handleOperators(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleOperatorCreatePage(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
+	lang := requestLang(r)
 	s.render(w, "operator_new", operatorCreatePage{
-		basePage: s.base(r, user, "operators", "page.create_operator"),
+		basePage:          s.base(r, user, "operators", "page.create_operator"),
+		CapabilityOptions: capabilityOptions(lang, operators.AllCapabilities()),
 	})
 }
 
@@ -135,7 +146,8 @@ func (s *Server) handleOperatorCreate(w http.ResponseWriter, r *http.Request) {
 		s.renderOperatorCreateMessage(w, r, user, formMessage{Error: tr(lang, "form.password_mismatch")})
 		return
 	}
-	err := s.operators.Create(r.PostFormValue("username"), r.PostFormValue("display_name"), r.PostFormValue("email"), password, s.now())
+	caps := capabilitiesFromForm(r)
+	err := s.operators.Create(r.PostFormValue("username"), r.PostFormValue("display_name"), r.PostFormValue("email"), password, caps, s.now())
 	if err != nil {
 		msg := tr(lang, "form.create_operator_failed")
 		if errors.Is(err, operators.ErrDuplicate) {
@@ -159,9 +171,15 @@ func (s *Server) renderOperatorsMessage(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *Server) renderOperatorCreateMessage(w http.ResponseWriter, r *http.Request, username string, create formMessage) {
+	lang := requestLang(r)
+	selected := capabilitiesFromForm(r)
+	if len(selected) == 0 && r.PostForm == nil {
+		selected = operators.AllCapabilities()
+	}
 	s.render(w, "operator_new", operatorCreatePage{
-		basePage: s.base(r, username, "operators", "page.create_operator"),
-		Create:   create,
+		basePage:          s.base(r, username, "operators", "page.create_operator"),
+		CapabilityOptions: capabilityOptions(lang, selected),
+		Create:            create,
 	})
 }
 
@@ -172,6 +190,9 @@ func (s *Server) operatorRows(lang string) []operatorRow {
 		row := operatorRow{Snapshot: snap, LastLoginAgo: tr(lang, "common.never")}
 		if snap.LastLoginMS != 0 {
 			row.LastLoginAgo = s.agoLang(lang, snap.LastLoginMS)
+		}
+		for _, cap := range snap.Capabilities {
+			row.CapabilityLabels = append(row.CapabilityLabels, capabilityLabel(lang, cap))
 		}
 		rows = append(rows, row)
 	}
@@ -188,8 +209,9 @@ func (s *Server) handleOperatorEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	lang := requestLang(r)
 	s.render(w, "operator_edit", operatorEditPage{
-		basePage: s.baseTitle(r, user, "operators", tr(lang, "operators.title")+" "+op.Username),
-		Operator: op,
+		basePage:          s.baseTitle(r, user, "operators", tr(lang, "operators.title")+" "+op.Username),
+		Operator:          op,
+		CapabilityOptions: capabilityOptions(lang, op.Capabilities),
 	})
 }
 
@@ -215,7 +237,12 @@ func (s *Server) handleOperatorUpdate(w http.ResponseWriter, r *http.Request) {
 		s.renderOperatorEditMessage(w, r, user, username, formMessage{}, formMessage{OK: tr(lang, "form.password_reset")})
 		return
 	}
-	if err := s.operators.UpdateProfile(username, r.PostFormValue("display_name"), r.PostFormValue("email"), s.now()); err != nil {
+	caps := capabilitiesFromForm(r)
+	if username == user && !operators.HasCapability(caps, operators.CapabilityOperatorManage) {
+		s.renderOperatorEditMessage(w, r, user, username, formMessage{Error: tr(lang, "form.operator_self_capability")}, formMessage{})
+		return
+	}
+	if err := s.operators.UpdateProfileAndCapabilities(username, r.PostFormValue("display_name"), r.PostFormValue("email"), caps, s.now()); err != nil {
 		s.renderOperatorEditMessage(w, r, user, username, formMessage{Error: tr(lang, "form.update_profile_failed")}, formMessage{})
 		return
 	}
@@ -230,10 +257,11 @@ func (s *Server) renderOperatorEditMessage(w http.ResponseWriter, r *http.Reques
 	}
 	lang := requestLang(r)
 	s.render(w, "operator_edit", operatorEditPage{
-		basePage: s.baseTitle(r, currentUser, "operators", tr(lang, "operators.title")+" "+op.Username),
-		Operator: op,
-		Profile:  profile,
-		Password: password,
+		basePage:          s.baseTitle(r, currentUser, "operators", tr(lang, "operators.title")+" "+op.Username),
+		Operator:          op,
+		CapabilityOptions: capabilityOptions(lang, op.Capabilities),
+		Profile:           profile,
+		Password:          password,
 	})
 }
 
@@ -242,4 +270,38 @@ func (s *Server) handleAPIOperators(w http.ResponseWriter, _ *http.Request) {
 		"now_ms":    s.now().UnixMilli(),
 		"operators": s.operators.List(),
 	})
+}
+
+func capabilitiesFromForm(r *http.Request) []operators.Capability {
+	values := r.PostForm["capabilities"]
+	out := make([]operators.Capability, 0, len(values))
+	for _, v := range values {
+		out = append(out, operators.Capability(v))
+	}
+	return out
+}
+
+func capabilityOptions(lang string, selected []operators.Capability) []capabilityOption {
+	options := make([]capabilityOption, 0, len(operators.AllCapabilities()))
+	for _, cap := range operators.AllCapabilities() {
+		options = append(options, capabilityOption{
+			Value:   string(cap),
+			Label:   capabilityLabel(lang, cap),
+			Checked: operators.HasCapability(selected, cap),
+		})
+	}
+	return options
+}
+
+func capabilityLabel(lang string, cap operators.Capability) string {
+	switch cap {
+	case operators.CapabilityFleetView:
+		return tr(lang, "capability.fleet_view")
+	case operators.CapabilityTokenManage:
+		return tr(lang, "capability.tokens_manage")
+	case operators.CapabilityOperatorManage:
+		return tr(lang, "capability.operators_manage")
+	default:
+		return string(cap)
+	}
 }

@@ -154,16 +154,17 @@ tested:
   (`internal/center`, `internal/web`).
 - **Node registry, token auth, and token lifecycle.** Per-node bearer-token auth; a token may only
   ever speak for its own `node_id`; dashboard operators can create, rotate, and revoke
-  center-managed node authentication tokens. The dashboard/API expose only safe inventory metadata
-  (source, fingerprint, last authentication) and never display bearer secrets (`internal/tokens`,
-  `internal/center`, `internal/web`).
+  center-managed node authentication tokens. The dashboard shows generated bearer secrets only once
+  immediately after create/rotate; normal dashboard/API inventory exposes only safe metadata (source,
+  fingerprint, last authentication) (`internal/tokens`, `internal/center`, `internal/web`).
 - **Observation dashboard.** An embedded admin dashboard (fleet overview, node detail, token
   inventory, collapsible left sidebar), compiled into the single binary via `embed.FS`
   (`internal/web`, `internal/center`).
 - **Dashboard login and operator governance.** Form login + HttpOnly cookie session, optional
-  "remember this device" long-lived session (never password storage), multi-operator management,
-  profile/password updates, and per-source-IP failed-login lockout backed by strict security
-  response headers (`internal/center`, `internal/operators`, `internal/loginguard`).
+  "remember this device" long-lived session (never password storage), direct built-in operator
+  capabilities (`fleet:view`, `tokens:manage`, `operators:manage`), session-bound CSRF checks for
+  authenticated mutations, profile/password updates, and per-source-IP failed-login lockout backed
+  by strict security response headers (`internal/center`, `internal/operators`, `internal/loginguard`).
 - **Mock edge harness.** Simulates heartbeats and audit shipping without a real `scoot-edge`,
   exercising the end-to-end path (`internal/mockedge`, `cmd/scootship mock-edge`).
 - **CLI and configuration.** `scootship serve | mock-edge | version`, all configured via

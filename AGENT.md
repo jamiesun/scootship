@@ -72,10 +72,10 @@ archives with checksums.
 | `internal/protocol` | The frozen scoot-edge v1 contract: envelope, status/audit/job bodies, idempotency cursor. The narrowest, most stable surface — change only to track EDGE.md. |
 | `internal/store` | `Store` interface + append-only JSONL `Mem` implementation. Idempotent audit ingest, replay on startup, bounded dashboard audit window, explicit retention gaps, and retained-window run timelines. |
 | `internal/tokens` | Per-node bearer-token registry and private managed lifecycle overlay. The center's node auth surface; **not** node policy config. |
-| `internal/operators` | Dashboard operator accounts, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
+| `internal/operators` | Dashboard operator accounts, direct built-in capabilities, profile/password management, and password hashing. The center's operator governance surface; **not** node policy config. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (sliding-window failure count + lockout). |
 | `internal/config` | `SCOOTSHIP_*` environment configuration. |
-| `internal/center` | HTTP server, auth middleware, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, read-only health signals, dashboard login session, dashboard + JSON API. |
+| `internal/center` | HTTP server, auth middleware, capability gates, CSRF checks, login throttle + security headers, `/telemetry` ingest, `/jobs/lease` stub, read-only health signals, dashboard login session, dashboard + JSON API. |
 | `internal/center/server_run_test.go` | Runtime transport smoke coverage for direct TLS, explicit dev HTTP, and trusted TLS-proxy HTTP modes. |
 | `internal/web` | `embed.FS` dashboard templates and static assets. |
 | `internal/mockedge` | Simulated edge node (heartbeat, audit shipping, lease poll). |
@@ -108,12 +108,15 @@ the roadmap's non-goals as enforceable engineering rules.
    durably stored cursor.
 6. **The UI ships embedded.** Dashboard assets are served from `embed.FS` in the one binary —
    no separate web process, no Node build step, no CDN runtime dependency.
-7. **Secrets never get compiled in, committed, logged, or printed.** Node tokens, TLS keys, and
-   bootstrap dashboard passwords come from env or a private file; persisted operator passwords must
-   be one-way hashes. Do not log the `Authorization` header.
+7. **Secrets never get compiled in, committed, logged, or printed to logs.** Node tokens, TLS keys,
+   and bootstrap dashboard passwords come from env or a private file; persisted operator passwords
+   must be one-way hashes. The dashboard may show a generated node token once at create/rotate time,
+   but token inventory, APIs, logs, and audits must never expose bearer secret material. Do not log
+   the `Authorization` header.
 8. **Authenticate every node and dashboard endpoint.** Bearer token for node routes, a login
    session (form login + HttpOnly cookie) for the dashboard. A token may only ever speak for
-   its own `node_id`. The dashboard login is throttled per source IP (`internal/loginguard`):
+   its own `node_id`. Authenticated dashboard mutations must pass session-bound CSRF checks and
+   operator action gates based on direct built-in capabilities. The dashboard login is throttled per source IP (`internal/loginguard`):
    never weaken or remove the lockout, and never key it on username (that would let an attacker
    lock out the real operator). Trust `X-Forwarded-For` only from configured
    `SCOOTSHIP_TRUSTED_PROXIES`.

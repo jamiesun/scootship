@@ -141,7 +141,6 @@ code,
     color: var(--muted);
     font-weight: 700;
 }
-
 .side-bottom {
     margin-top: auto;
     padding: 12px 10px;
@@ -589,6 +588,19 @@ pre {
     margin: 4px 0 16px;
     font-size: 22px;
 }
+.action-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.action-head h1 {
+    margin: 0;
+}
+.action-head .btn {
+    flex: 0 0 auto;
+}
 .kv-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -731,9 +743,6 @@ table.audit td {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     align-items: end;
 }
-.token-create-form {
-    margin-top: 14px;
-}
 .stack-form label,
 .grid-form label {
     display: flex;
@@ -751,6 +760,31 @@ table.audit td {
     border-radius: 8px;
     color: var(--fg);
     font: inherit;
+}
+.capability-list {
+    grid-column: 1 / -1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 8px;
+}
+.capability-list legend {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0 4px;
+}
+.stack-form .check-row,
+.grid-form .check-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.stack-form .check-row input,
+.grid-form .check-row input {
+    width: auto;
+    padding: 0;
 }
 .stack-form button,
 .grid-form button {
@@ -779,6 +813,22 @@ table.audit td {
     background: rgba(229, 104, 122, 0.14);
     color: var(--danger);
     border: 1px solid rgba(229, 104, 122, 0.3);
+}
+.secret-reveal {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 12px;
+    border: 1px solid rgba(76, 195, 138, 0.32);
+    border-radius: 8px;
+    background: rgba(76, 195, 138, 0.1);
+}
+.secret-value {
+    overflow-wrap: anywhere;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
 }
 .token-actions {
     min-width: 220px;
@@ -975,6 +1025,10 @@ table.audit td {
     }
     .tagline {
         display: none;
+    }
+    .action-head {
+        align-items: flex-start;
+        flex-direction: column;
     }
     .cols {
         grid-template-columns: 1fr;

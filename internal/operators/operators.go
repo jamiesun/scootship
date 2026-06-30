@@ -42,23 +42,44 @@ var (
 // Operator is the persisted dashboard operator account. PasswordHash is never
 // returned in public snapshots.
 type Operator struct {
-	Username     string `json:"username"`
-	DisplayName  string `json:"display_name,omitempty"`
-	Email        string `json:"email,omitempty"`
-	PasswordHash string `json:"password_hash"`
-	CreatedMS    int64  `json:"created_ms"`
-	UpdatedMS    int64  `json:"updated_ms"`
-	LastLoginMS  int64  `json:"last_login_ms,omitempty"`
+	Username     string       `json:"username"`
+	DisplayName  string       `json:"display_name,omitempty"`
+	Email        string       `json:"email,omitempty"`
+	PasswordHash string       `json:"password_hash"`
+	Capabilities []Capability `json:"capabilities,omitempty"`
+	CreatedMS    int64        `json:"created_ms"`
+	UpdatedMS    int64        `json:"updated_ms"`
+	LastLoginMS  int64        `json:"last_login_ms,omitempty"`
+}
+
+// Capability is one built-in dashboard authority granted directly to an
+// operator. Scootship intentionally does not add role groups yet.
+type Capability string
+
+const (
+	CapabilityFleetView      Capability = "fleet:view"
+	CapabilityTokenManage    Capability = "tokens:manage"
+	CapabilityOperatorManage Capability = "operators:manage"
+)
+
+// AllCapabilities returns the fixed system capability list in UI order.
+func AllCapabilities() []Capability {
+	return []Capability{
+		CapabilityFleetView,
+		CapabilityTokenManage,
+		CapabilityOperatorManage,
+	}
 }
 
 // Snapshot is a dashboard/API-safe operator view.
 type Snapshot struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name,omitempty"`
-	Email       string `json:"email,omitempty"`
-	CreatedMS   int64  `json:"created_ms"`
-	UpdatedMS   int64  `json:"updated_ms"`
-	LastLoginMS int64  `json:"last_login_ms,omitempty"`
+	Username     string       `json:"username"`
+	DisplayName  string       `json:"display_name,omitempty"`
+	Email        string       `json:"email,omitempty"`
+	Capabilities []Capability `json:"capabilities"`
+	CreatedMS    int64        `json:"created_ms"`
+	UpdatedMS    int64        `json:"updated_ms"`
+	LastLoginMS  int64        `json:"last_login_ms,omitempty"`
 }
 
 // Store persists operators to dataDir/operators.json. Empty dataDir creates an
@@ -83,7 +104,7 @@ func Open(dataDir, bootstrapUser, bootstrapPassword string, now time.Time) (*Sto
 		}
 	}
 	if len(s.users) == 0 && bootstrapPassword != "" {
-		if err := s.createLocked(bootstrapUser, bootstrapUser, "", bootstrapPassword, now); err != nil {
+		if err := s.createLocked(bootstrapUser, bootstrapUser, "", bootstrapPassword, AllCapabilities(), now); err != nil {
 			return nil, err
 		}
 		if err := s.saveLocked(); err != nil {
@@ -108,6 +129,11 @@ func (s *Store) load() error {
 	for _, u := range users {
 		if u.Username == "" || u.PasswordHash == "" {
 			continue
+		}
+		if u.Capabilities == nil {
+			u.Capabilities = AllCapabilities()
+		} else {
+			u.Capabilities = normalizeCapabilities(u.Capabilities)
 		}
 		s.users[u.Username] = u
 	}
@@ -184,18 +210,22 @@ func (s *Store) Get(username string) (Snapshot, bool) {
 	return snapshot(u), true
 }
 
-func (s *Store) Create(username, displayName, email, password string, now time.Time) error {
+func (s *Store) Create(username, displayName, email, password string, capabilities []Capability, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.createLocked(username, displayName, email, password, now); err != nil {
+	if err := s.createLocked(username, displayName, email, password, capabilities, now); err != nil {
 		return err
 	}
 	return s.saveLocked()
 }
 
-func (s *Store) createLocked(username, displayName, email, password string, now time.Time) error {
+func (s *Store) createLocked(username, displayName, email, password string, capabilities []Capability, now time.Time) error {
 	username = normalizeUsername(username)
 	if username == "" || password == "" {
+		return ErrInvalid
+	}
+	caps := normalizeCapabilities(capabilities)
+	if len(caps) == 0 {
 		return ErrInvalid
 	}
 	if _, ok := s.users[username]; ok {
@@ -211,6 +241,7 @@ func (s *Store) createLocked(username, displayName, email, password string, now 
 		DisplayName:  strings.TrimSpace(displayName),
 		Email:        strings.TrimSpace(email),
 		PasswordHash: hash,
+		Capabilities: caps,
 		CreatedMS:    ms,
 		UpdatedMS:    ms,
 	}
@@ -227,6 +258,26 @@ func (s *Store) UpdateProfile(username, displayName, email string, now time.Time
 	}
 	u.DisplayName = strings.TrimSpace(displayName)
 	u.Email = strings.TrimSpace(email)
+	u.UpdatedMS = now.UnixMilli()
+	s.users[username] = u
+	return s.saveLocked()
+}
+
+func (s *Store) UpdateProfileAndCapabilities(username, displayName, email string, capabilities []Capability, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	username = normalizeUsername(username)
+	u, ok := s.users[username]
+	if !ok {
+		return ErrNotFound
+	}
+	caps := normalizeCapabilities(capabilities)
+	if len(caps) == 0 {
+		return ErrInvalid
+	}
+	u.DisplayName = strings.TrimSpace(displayName)
+	u.Email = strings.TrimSpace(email)
+	u.Capabilities = caps
 	u.UpdatedMS = now.UnixMilli()
 	s.users[username] = u
 	return s.saveLocked()
@@ -279,13 +330,40 @@ func (s *Store) ChangePassword(username, currentPassword, newPassword string, no
 
 func snapshot(u Operator) Snapshot {
 	return Snapshot{
-		Username:    u.Username,
-		DisplayName: u.DisplayName,
-		Email:       u.Email,
-		CreatedMS:   u.CreatedMS,
-		UpdatedMS:   u.UpdatedMS,
-		LastLoginMS: u.LastLoginMS,
+		Username:     u.Username,
+		DisplayName:  u.DisplayName,
+		Email:        u.Email,
+		Capabilities: normalizeCapabilities(u.Capabilities),
+		CreatedMS:    u.CreatedMS,
+		UpdatedMS:    u.UpdatedMS,
+		LastLoginMS:  u.LastLoginMS,
 	}
+}
+
+func HasCapability(caps []Capability, want Capability) bool {
+	for _, cap := range caps {
+		if cap == want {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeCapabilities(in []Capability) []Capability {
+	allowed := map[Capability]bool{}
+	for _, cap := range AllCapabilities() {
+		allowed[cap] = true
+	}
+	seen := map[Capability]bool{}
+	var out []Capability
+	for _, cap := range in {
+		if !allowed[cap] || seen[cap] {
+			continue
+		}
+		seen[cap] = true
+		out = append(out, cap)
+	}
+	return out
 }
 
 func normalizeUsername(username string) string {

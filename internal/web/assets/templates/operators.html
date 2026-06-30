@@ -1,6 +1,11 @@
 {{define "operators"}}{{template "header" .}}
     <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <span>{{t .Lang "common.operators"}}</span></nav>
 
+    <section class="page-head action-head">
+      <h1>{{t .Lang "page.operators"}}</h1>
+      <a class="btn" href="/operators/new">{{t .Lang "operators.create_operator"}}</a>
+    </section>
+
     <section class="summary">
       <div class="stat">
         <span class="num">{{len .Operators}}</span>
@@ -8,14 +13,8 @@
       </div>
     </section>
 
-    <section class="card">
-      <h3>{{t .Lang "operators.management"}}</h3>
-      {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
-      {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
-      <div class="actions-row">
-        <a class="btn" href="/operators/new">{{t .Lang "operators.create_operator"}}</a>
-      </div>
-    </section>
+    {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
+    {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
 
     {{if .Operators}}
     <table class="operators">
@@ -24,6 +23,7 @@
           <th>{{t .Lang "common.username"}}</th>
           <th>{{t .Lang "common.display_name"}}</th>
           <th>{{t .Lang "common.email"}}</th>
+          <th>{{t .Lang "operators.capabilities"}}</th>
           <th>{{t .Lang "operators.last_login"}}</th>
           <th></th>
         </tr>
@@ -34,6 +34,7 @@
           <td class="mono">{{.Username}}</td>
           <td>{{or .DisplayName "—"}}</td>
           <td>{{or .Email "—"}}</td>
+          <td class="muted">{{range $i, $cap := .CapabilityLabels}}{{if $i}}, {{end}}{{$cap}}{{end}}</td>
           <td class="muted">{{.LastLoginAgo}}</td>
           <td class="num-col"><a href="/operators/{{.Username}}">{{t $.Lang "common.edit"}}</a></td>
         </tr>

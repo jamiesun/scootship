@@ -7,17 +7,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jamiesun/scootship/internal/operators"
 	"github.com/jamiesun/scootship/internal/store"
 	"github.com/jamiesun/scootship/internal/version"
 )
 
 type basePage struct {
-	Title       string
-	Version     string
-	User        string // logged-in operator (for the sidebar)
-	Active      string // active sidebar item key
-	Lang        string
-	CurrentPath string
+	Title              string
+	Version            string
+	User               string // logged-in operator (for the sidebar)
+	Active             string // active sidebar item key
+	Lang               string
+	CurrentPath        string
+	CSRFToken          string
+	CanViewFleet       bool
+	CanManageTokens    bool
+	CanManageOperators bool
 }
 
 type nodeRow struct {
@@ -78,6 +83,18 @@ type tokensPage struct {
 	KnownNodes    int
 	Rows          []tokenRow
 	Manage        formMessage
+	Reveal        tokenSecretReveal
+}
+
+type tokenCreatePage struct {
+	basePage
+	Create formMessage
+}
+
+type tokenSecretReveal struct {
+	NodeID string
+	Secret string
+	Action string
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
@@ -175,11 +192,11 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
-	page := s.tokensPage(r, user, formMessage{})
+	page := s.tokensPage(r, user, formMessage{}, tokenSecretReveal{})
 	s.render(w, "tokens", page)
 }
 
-func (s *Server) tokensPage(r *http.Request, user string, msg formMessage) tokensPage {
+func (s *Server) tokensPage(r *http.Request, user string, msg formMessage, reveal tokenSecretReveal) tokensPage {
 	lang := requestLang(r)
 	rows := s.tokenRows(lang)
 	page := tokensPage{
@@ -187,6 +204,7 @@ func (s *Server) tokensPage(r *http.Request, user string, msg formMessage) token
 		Total:    len(rows),
 		Rows:     rows,
 		Manage:   msg,
+		Reveal:   reveal,
 	}
 	for _, row := range rows {
 		if row.LastAuthenticatedMS != 0 {
@@ -246,12 +264,16 @@ func (s *Server) base(r *http.Request, user, active, titleKey string) basePage {
 func (s *Server) baseTitle(r *http.Request, user, active, title string) basePage {
 	lang := requestLang(r)
 	return basePage{
-		Title:       title,
-		Version:     version.Version,
-		User:        user,
-		Active:      active,
-		Lang:        lang,
-		CurrentPath: r.URL.RequestURI(),
+		Title:              title,
+		Version:            version.Version,
+		User:               user,
+		Active:             active,
+		Lang:               lang,
+		CurrentPath:        r.URL.RequestURI(),
+		CSRFToken:          s.csrfToken(r),
+		CanViewFleet:       s.operatorHasCapability(user, operators.CapabilityFleetView),
+		CanManageTokens:    s.operatorHasCapability(user, operators.CapabilityTokenManage),
+		CanManageOperators: s.operatorHasCapability(user, operators.CapabilityOperatorManage),
 	}
 }
 

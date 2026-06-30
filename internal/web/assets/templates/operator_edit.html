@@ -11,6 +11,7 @@
         {{if .Profile.OK}}<div class="form-ok">{{.Profile.OK}}</div>{{end}}
         {{if .Profile.Error}}<div class="form-error">{{.Profile.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/operators/{{.Operator.Username}}">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="action" value="profile">
           <label>{{t .Lang "common.display_name"}}
             <input name="display_name" value="{{.Operator.DisplayName}}" autocomplete="name">
@@ -18,6 +19,12 @@
           <label>{{t .Lang "common.email"}}
             <input name="email" type="email" value="{{.Operator.Email}}" autocomplete="email">
           </label>
+          <fieldset class="capability-list">
+            <legend>{{t .Lang "operators.capabilities"}}</legend>
+            {{range .CapabilityOptions}}
+            <label class="check-row"><input type="checkbox" name="capabilities" value="{{.Value}}" {{if .Checked}}checked{{end}}> <span>{{.Label}}</span></label>
+            {{end}}
+          </fieldset>
           <button type="submit">{{t .Lang "account.save_profile"}}</button>
         </form>
       </div>
@@ -27,6 +34,7 @@
         {{if .Password.OK}}<div class="form-ok">{{.Password.OK}}</div>{{end}}
         {{if .Password.Error}}<div class="form-error">{{.Password.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/operators/{{.Operator.Username}}">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="action" value="password">
           <label>{{t .Lang "account.new_password"}}
             <input name="new_password" type="password" autocomplete="new-password" required>

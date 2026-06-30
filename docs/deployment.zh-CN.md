@@ -30,7 +30,7 @@ sudo install -d -o root -g scootship -m 0750 /etc/scootship
 | 路径 | 内容 | 必要保护 |
 | --- | --- | --- |
 | `SCOOTSHIP_DATA_DIR/center.jsonl` | append-only 遥测与审计存储 | 私有数据目录；按敏感数据备份 |
-| `SCOOTSHIP_DATA_DIR/operators.json` | 仪表盘操作员记录，密码为哈希 | `0600`，按敏感数据备份 |
+| `SCOOTSHIP_DATA_DIR/operators.json` | 仪表盘操作员记录，包含密码哈希与直接能力 | `0600`，按敏感数据备份 |
 | `SCOOTSHIP_DATA_DIR/managed_node_tokens.json` | 中心托管节点 token secret 与撤销状态 | `0600`，按密钥材料备份 |
 | `SCOOTSHIP_NODE_TOKENS_FILE` | 可选的静态节点 token JSON | 普通私有文件，不得有组/其他用户/可执行权限 |
 | TLS 私钥 | 直连 HTTPS 使用的私钥 | 按私钥处理；不得提交或写入日志 |
@@ -68,6 +68,14 @@ sudo chmod 0640 /etc/scootship/scootship.env
 
 `SCOOTSHIP_ADMIN_PASSWORD` 只在 `operators.json` 为空时用于 bootstrap 第一个操作员。bootstrap 后，
 操作员应从仪表盘管理。不要把真实密码留在 shell 历史里。
+
+bootstrap 操作员和旧版本遗留操作员会获得所有当前内置能力（`fleet:view`、`tokens:manage`、
+`operators:manage`），避免升级后锁死治理入口。新建操作员应只授予所需能力。
+
+仪表盘令牌管理由中心侧生成节点 bearer token。创建或轮换后 secret 只显示一次；之后仪表盘和 API
+只暴露节点 ID、来源、指纹与鉴权活动。把生成的 secret 写入同一节点 ID 的 edge 配置。当前
+`scoot-edge` 客户端会把它作为 `Authorization: Bearer <token>` 发送；本地协议测试时就是设置
+`SCOOT_EDGE_TOKEN=<secret>`，同时使用 `--node-id <node>` 和中心 `/telemetry` URL。
 
 ## systemd 单元
 

@@ -11,6 +11,7 @@
         {{if .Profile.OK}}<div class="form-ok">{{.Profile.OK}}</div>{{end}}
         {{if .Profile.Error}}<div class="form-error">{{.Profile.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/account">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <label>{{t .Lang "common.display_name"}}
             <input name="display_name" value="{{.Operator.DisplayName}}" autocomplete="name">
           </label>
@@ -26,6 +27,7 @@
         {{if .Password.OK}}<div class="form-ok">{{.Password.OK}}</div>{{end}}
         {{if .Password.Error}}<div class="form-error">{{.Password.Error}}</div>{{end}}
         <form class="stack-form" method="post" action="/account/password">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <label>{{t .Lang "account.current_password"}}
             <input name="current_password" type="password" autocomplete="current-password" required>
           </label>

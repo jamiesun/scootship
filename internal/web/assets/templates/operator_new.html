@@ -6,6 +6,7 @@
       {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
       {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
       <form class="grid-form" method="post" action="/operators">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <label>{{t .Lang "common.username"}}
           <input name="username" autocomplete="username" required>
         </label>
@@ -21,6 +22,12 @@
         <label>{{t .Lang "account.confirm_new_password"}}
           <input name="confirm_password" type="password" autocomplete="new-password" required>
         </label>
+        <fieldset class="capability-list">
+          <legend>{{t .Lang "operators.capabilities"}}</legend>
+          {{range .CapabilityOptions}}
+          <label class="check-row"><input type="checkbox" name="capabilities" value="{{.Value}}" {{if .Checked}}checked{{end}}> <span>{{.Label}}</span></label>
+          {{end}}
+        </fieldset>
         <button type="submit">{{t .Lang "common.create"}}</button>
       </form>
     </section>
