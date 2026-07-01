@@ -96,6 +96,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /{$}", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleFleet))))
 	mux.Handle("GET /nodes/{id}", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleNode))))
 	mux.Handle("GET /dispatch", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleDispatch))))
+	mux.Handle("GET /dispatch/new", s.requireAdmin(s.requireCapability(operators.CapabilityDispatchManage, http.HandlerFunc(s.handleDispatchCreatePage))))
+	mux.Handle("POST /dispatch", s.requireAdmin(s.requireCapability(operators.CapabilityDispatchManage, s.requireCSRF(http.HandlerFunc(s.handleDispatchCreate)))))
 	mux.Handle("POST /logout", s.requireAdmin(s.requireCSRF(http.HandlerFunc(s.handleLogout))))
 	mux.Handle("GET /tokens", s.requireAdmin(s.requireCapability(operators.CapabilityTokenManage, http.HandlerFunc(s.handleTokens))))
 	mux.Handle("GET /tokens/new", s.requireAdmin(s.requireCapability(operators.CapabilityTokenManage, http.HandlerFunc(s.handleTokenCreatePage))))

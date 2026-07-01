@@ -7,7 +7,21 @@
 // backend (for example SQLite) can replace it later without touching callers.
 package store
 
-import "github.com/jamiesun/scootship/internal/protocol"
+import (
+	"errors"
+
+	"github.com/jamiesun/scootship/internal/protocol"
+)
+
+// Sentinel errors returned by EnqueueJob so callers (the dashboard create form,
+// tests) can react without string-matching.
+var (
+	// ErrUnknownNode means the requested node_id has never reported status.
+	ErrUnknownNode = errors.New("unknown node")
+	// ErrDispatchQueueFull means the target node already has the maximum
+	// number of non-terminal (pending) dispatch jobs allowed at once.
+	ErrDispatchQueueFull = errors.New("dispatch queue full for node")
+)
 
 // NodeView is the center's current picture of one node.
 type NodeView struct {

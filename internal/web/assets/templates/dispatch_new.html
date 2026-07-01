@@ -1,0 +1,51 @@
+{{define "dispatch_new"}}{{template "header" .}}
+    <nav class="crumbs"><a href="/">{{t .Lang "common.fleet"}}</a> <span class="dot">/</span> <a href="/dispatch">{{t .Lang "page.dispatch"}}</a> <span class="dot">/</span> <span>{{t .Lang "common.create"}}</span></nav>
+
+    <section class="card">
+      <h3>{{t .Lang "dispatch.create"}}</h3>
+      <p class="muted">{{t .Lang "dispatch.create_metadata"}}</p>
+      {{if .Create.OK}}<div class="form-ok">{{.Create.OK}}</div>{{end}}
+      {{if .Create.Error}}<div class="form-error">{{.Create.Error}}</div>{{end}}
+      {{if .Nodes}}
+      <form class="grid-form" method="post" action="/dispatch" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label>{{t .Lang "dispatch.select_node"}}
+          <select name="node_id" required>
+            <option value="">—</option>
+            {{range .Nodes}}<option value="{{.NodeID}}" {{if .Selected}}selected{{end}}>{{.NodeID}}{{if not .Online}} ({{t $.Lang "fleet.stale"}}){{end}}</option>{{end}}
+          </select>
+        </label>
+        <label>{{t .Lang "dispatch.requested_policy"}}
+          <select name="requested_policy">
+            <option value="readonly" {{if eq .Form.RequestedPolicy "readonly"}}selected{{end}}>readonly</option>
+            <option value="guarded" {{if eq .Form.RequestedPolicy "guarded"}}selected{{end}}>guarded</option>
+            <option value="unrestricted" {{if eq .Form.RequestedPolicy "unrestricted"}}selected{{end}}>unrestricted</option>
+          </select>
+        </label>
+        <p class="muted field-wide">{{t .Lang "dispatch.policy_clamp_hint"}}</p>
+        <label>{{t .Lang "dispatch.deadline_minutes"}}
+          <input name="deadline_minutes" type="number" min="1" max="1440" value="{{.Form.DeadlineMinutes}}" required>
+        </label>
+        <label>{{t .Lang "dispatch.max_retries"}}
+          <input name="max_retries" type="number" min="0" max="5" value="{{.Form.MaxRetries}}" required>
+        </label>
+        <label class="field-wide">{{t .Lang "dispatch.goal"}}
+          <textarea name="goal" rows="4" required>{{.Form.Goal}}</textarea>
+        </label>
+        <p class="muted field-wide">{{t .Lang "dispatch.goal_hint"}}</p>
+        <label>{{t .Lang "dispatch.required_labels"}}
+          <input name="required_labels" value="{{.Form.RequiredLabels}}">
+        </label>
+        <label>{{t .Lang "dispatch.required_tools"}}
+          <input name="required_tools" value="{{.Form.RequiredTools}}">
+        </label>
+        <label>{{t .Lang "dispatch.required_skills"}}
+          <input name="required_skills" value="{{.Form.RequiredSkills}}">
+        </label>
+        <button type="submit">{{t .Lang "dispatch.submit"}}</button>
+      </form>
+      {{else}}
+      <p class="muted">{{t .Lang "dispatch.no_nodes"}}</p>
+      {{end}}
+    </section>
+{{template "footer" .}}{{end}}

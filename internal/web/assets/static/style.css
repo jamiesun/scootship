@@ -845,13 +845,24 @@ table.audit td {
     font-weight: 600;
 }
 .stack-form input,
-.grid-form input {
+.grid-form input,
+.stack-form select,
+.grid-form select,
+.stack-form textarea,
+.grid-form textarea {
     padding: 9px 11px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--fg);
     font: inherit;
+}
+.stack-form textarea,
+.grid-form textarea {
+    resize: vertical;
+}
+.field-wide {
+    grid-column: 1 / -1;
 }
 .capability-list {
     grid-column: 1 / -1;

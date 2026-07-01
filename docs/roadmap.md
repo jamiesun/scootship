@@ -66,11 +66,11 @@ The core operating model follows the topology and authorization model already fr
 
 ### Key premises and dependencies (to verify / coordination risk)
 
-- **`scoot-edge` is optional and may lag the center contract.** The Scoot repo now has an opt-in
-  E1 edge companion and the unattended clamp needed by E2, but full dispatch rollout still depends
-  on the remaining edge-side cwd confinement and a named compatible contract. So "being able to work
-  against the protocol contract" and "shipping a mock edge that simulates reporting and job leasing"
-  remain hard requirements for Scootship, not nice-to-haves.
+- **`scoot-edge` is optional and may lag the center contract.** The Scoot repo has shipped the E1
+  edge companion, the unattended policy clamp, and (as of `scoot-edge v0.8.0`) full E2 job dispatch
+  including `edge.job_root` cwd confinement. So "being able to work against the protocol contract"
+  and "shipping a mock edge that simulates reporting and job leasing" remain hard requirements for
+  Scootship, not nice-to-haves — scootship must not assume a specific edge build is installed.
 - **The protocol contract follows `EDGE.md` (`v:1`).** The envelope looks like
   `{"v":1,"type":"status|audit_batch|job|job_event","node_id":"...","sent_ts":<ms>,"body":{}}`;
   the frame format is NDJSON. Scootship must freeze this contract into a standalone, versioned
@@ -109,12 +109,13 @@ Once done, Scootship should look like this:
   and HTTP response bodies — once enabled, the center becomes a sink for potentially sensitive
   observation data. The center must do its own login authentication and action authorization for
   dashboard access, and have a retention / cleanup policy for stored audit data.
-- **Operational trust comes before remote orchestration.** Center-side E2 dispatch code must grow
-  behind explicit gates: production/dev transport boundaries are tested, deployment and recovery are
-  documented, audit lifecycle and gaps are implemented, node auth can be governed, health signals
-  are clear on the dashboard, and operator-facing dispatch creation/control remains withheld until
-  the edge-side rollout assumptions are satisfied. Read-only dispatch audit may show provenance
-  without creating a new power surface.
+- **Operational trust comes before remote orchestration.** Center-side E2 dispatch code grew behind
+  explicit gates: production/dev transport boundaries are tested, deployment and recovery are
+  documented, audit lifecycle and gaps are implemented, node auth can be governed, and health signals
+  are clear on the dashboard. Operator-facing dispatch **creation** opened once those gates were
+  satisfied and Scoot named a compatible edge contract version; dispatch **control** (cancel/retry)
+  remains withheld pending its own design and threat-model work. Read-only dispatch audit continues
+  to show provenance without creating a broader power surface than creation itself already added.
 
 Priorities when qualities conflict (highest to lowest):
 
@@ -180,7 +181,8 @@ tested:
   single-binary archives with checksums; project-local skills document controlled release
   orchestration and whole-project audits (`.github/workflows`, `.agents/skills`).
 
-Phase 2 center-side dispatch core has landed, while operator-facing dispatch rollout remains gated:
+Phase 2 center-side dispatch core has landed, and operator-facing dispatch **creation** is now open;
+dispatch **control** (cancel/retry/edit) remains unbuilt:
 
 - **Persisted dispatch queue and provenance.** The append-only JSONL store now persists dispatch job
   snapshots, rebuilds them on replay, de-duplicates enqueue by `idem_key`, and keeps requestor,
@@ -196,14 +198,20 @@ Phase 2 center-side dispatch core has landed, while operator-facing dispatch rol
 - **Lifecycle telemetry validation.** `job_event` bodies are validated before mutation and update
   dispatch lifecycle/provenance from append-only telemetry (`internal/protocol`,
   `internal/center/telemetry.go`, `internal/store`).
-- **Read-only dispatch audit.** Authenticated dashboard/API views can inspect persisted dispatch
-  jobs, lifecycle phase, target node, requested/effective policy, idempotency key, reject reason,
-  and `session_id` correlation without exposing any operator dispatch form or write-capable API
-  (`internal/center`, `internal/web`).
+- **Operator-facing dispatch creation.** Dashboard operators holding the `dispatch:manage`
+  capability can create a new node-targeted dispatch job from `/dispatch/new`: the form is
+  session- and CSRF-protected, validates the target node/goal/policy/deadline/retry bounds
+  server-side, always clamps the requested policy down to the node's own reported ceiling, and is
+  bounded by a configurable per-node pending-job queue cap (`SCOOTSHIP_DISPATCH_QUEUE_LIMIT`,
+  `store.ErrDispatchQueueFull`) so one node's queue cannot grow without limit
+  (`internal/center/dispatch_create.go`, `internal/store`).
+- **Read-only dispatch audit stays read-only.** The `/dispatch` list and `/api/dispatch` JSON view
+  remain inspection-only: lifecycle phase, target node, requested/effective policy, idempotency
+  key, reject reason, and `session_id` correlation are visible, but there is still no inline
+  edit/cancel/retry control on an existing job (`internal/center`, `internal/web`).
 
-The dashboard still exposes no operator dispatch form or broad fan-out control. Full E2 rollout
-remains gated on the remaining Scoot edge-side `edge.job_root` confinement assumption and operator
-documentation.
+Dispatch **control** — cancelling, retrying, or editing an already-queued job — remains unbuilt.
+Adding it is Phase 2 direction work, not yet current capability.
 
 > Note: this section records only what already exists. As each capability lands, move it here from
 > "Direction and intent" and cite its entry point or evidence path.
@@ -326,13 +334,13 @@ center's authority.
 ### Phase 2 · Task orchestration and dispatch (aligned with scoot-edge E2)
 
 Serves the portrait "dispatch is traceable" and the hard rules "the center does not raise the local
-ceiling / does not execute raw commands". The center-side core now exists, but operator-facing
-dispatch remains deliberately gated until every rollout condition below is satisfied, including the
-remaining Scoot edge-side cwd confinement assumption.
+ceiling / does not execute raw commands". The center-side core and operator-facing dispatch
+**creation** now exist; dispatch **control** (cancel/retry/edit of an existing job) is still
+deliberately withheld pending its own design and threat-model work.
 
-The E2 dispatch gate is all-or-nothing for write-capable dispatch. Do not expose partial dispatch
-creation/control UI/API, hidden feature flags, or "admin-only" bypasses until these conditions are
-met:
+The E2 **creation** gate below is what had to be true before opening `/dispatch/new`. It has been
+satisfied; do not treat that as blanket approval for the separate, still-closed **control** surface
+(cancel/retry/edit), which needs its own gate:
 
 - E1 transport behavior is tested for direct TLS, trusted TLS proxy, explicit dev mode, and fail-closed
   plain HTTP.
@@ -349,16 +357,19 @@ met:
 - A dispatch threat-model note covers queue abuse, replay/idempotency, capability spoofing,
   authorization, audit provenance, and rollback.
 
-Current gate status: **partially open for center-side core; operator dispatch still gated**. The E1
-side now has code and test evidence for direct TLS, trusted TLS-proxy HTTP, explicit dev HTTP, and
-fail-closed default plain HTTP behavior, plus deployment/recovery docs, audit retention and gap
-visibility, token lifecycle governance, run audit timelines, read-only health signals, endpoint
-failure modes, and strict telemetry body validation. Scoot `main` now documents and implements the
-unattended one-shot clamp (`scoot -e --unattended`) as the E2 keystone prerequisite, while its
-EDGE.md still gates E2 rollout on `edge.job_root` cwd confinement. Scootship now has dispatch queue,
-lease, idempotency, capability-miss rejection, lifecycle tests, and a read-only dispatch audit
-surface. Operator-facing dispatch creation/control UI/API remains blocked until the remaining
-edge-side assumption and operator documentation are satisfied.
+Current gate status: **creation open; control still gated**. The E1 side has code and test evidence
+for direct TLS, trusted TLS-proxy HTTP, explicit dev HTTP, and fail-closed default plain HTTP
+behavior, plus deployment/recovery docs, audit retention and gap visibility, token lifecycle
+governance, run audit timelines, read-only health signals, endpoint failure modes, and strict
+telemetry body validation. Scoot has shipped the unattended one-shot clamp
+(`scoot --unattended -e "<goal>"`) and, as of `scoot-edge v0.8.0`, full E2 job dispatch including
+`edge.job_root` cwd confinement — the named compatible contract version is `scoot-edge >= v0.8.0`.
+Scootship's center-side dispatch queue, lease, idempotency, capability-miss rejection, and lifecycle
+tests predate that release and were already contract-compatible. With the gate above satisfied,
+dashboard operators holding the `dispatch:manage` capability can now create node-targeted dispatch
+jobs from `/dispatch/new`, bounded by a per-node pending-job queue cap
+(`SCOOTSHIP_DISPATCH_QUEUE_LIMIT`). Dispatch **control** — editing, cancelling, or retrying an
+already-queued job from the dashboard — remains unbuilt and needs its own gate before it opens.
 
 - **Long-poll-based job dispatch.** Implemented for direct node-targeted jobs:
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
@@ -372,16 +383,18 @@ edge-side assumption and operator documentation are satisfied.
 - **Only-lower policy expression.** Implemented in the center-side enqueue path: when dispatching,
   only request a policy `≤` the node's local
   ceiling, defaulting to `readonly`; the center UI / API offers no entry point to "raise a node's
-  ceiling".
+  ceiling" — the create form always clamps down, never up.
+- **Operator-facing dispatch creation.** Implemented: dashboard operators with `dispatch:manage` can
+  create a node-targeted job from `/dispatch/new` (session + CSRF protected, server-side validated,
+  per-node queue-bounded). Node-targeted only by design; there is still no broad label/capability
+  fan-out creation flow.
 - **Dispatch-provenance audit.** Implemented as a read-only audit surface: the center records
   dispatch provenance, updates lifecycle/session linkage, and exposes the queue/provenance for
   inspection; `session_id` can join it back to ingested Scoot run audit, forming an end-to-end
   traceable chain.
-- **E2 prerequisites are explicit.** Queue semantics, capability / label matching, `idem_key`
-  idempotency, capacity bounding, deadlines, `job_event` handling, read-only dispatch provenance,
-  and the Scoot-side unattended readonly clamp now exist as code plus tests or upstream contract
-  evidence; operator-facing dispatch creation still waits on the remaining edge cwd confinement and
-  runbook work.
+- **Dispatch control (still direction work, not yet implemented).** Cancelling, retrying, or editing
+  an already-queued job from the dashboard needs its own threat-model note (an operator surface that
+  can affect a running/queued job is a different risk shape than pure creation) before it is added.
 
 ### Phase 3 · Governance and operational scale
 

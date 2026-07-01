@@ -30,8 +30,8 @@ behavior, configuration, or scope must update the matching section in the Englis
 scootship is the **management center** for a fleet of [Scoot](https://github.com/jamiesun/scoot)
 agents. It implements the **center (server) side** of the frozen `scoot-edge` v1 contract
 (see Scoot's `docs/EDGE.md`): it ingests append-only telemetry over HTTP and serves an embedded
-admin dashboard from a single Go binary. Phase 2 center-side dispatch core is present, with
-operator-facing dispatch creation still gated behind a read-only audit view.
+admin dashboard from a single Go binary. Phase 2 center-side dispatch core is present, including
+capability-gated operator dispatch creation; job control (cancel/retry) is not yet built.
 
 ## Relationship to Scoot (read this first)
 
@@ -136,14 +136,16 @@ the roadmap's non-goals as enforceable engineering rules.
 - **Phase 1.5 (landed): E1 operational maturity before new power.** Transport, endpoint failure
   modes, audit retention/gap visibility, run audit timelines, token lifecycle hardening, and
   read-only health signals are implemented and tested.
-- **E2 (current center-side core, rollout gated): job dispatch / orchestration.** The center can
-  persist direct node-targeted dispatch jobs, de-duplicate them by `idem_key`, clamp the requested
-  policy down to the node's reported ceiling, reject capability/label misses, lease only jobs bound
-  to the authenticated node, and update lifecycle from validated `job_event` telemetry. The
-  dashboard may expose this provenance through read-only audit views, but still exposes no operator
-  dispatch form until the remaining edge-side rollout gate is satisfied. Do not add broad fan-out,
-  hidden feature flags, admin-only bypasses, raw command fields, or any path that raises a node's
-  ceiling.
+- **E2 (current center-side core; creation open, control still withheld): job dispatch /
+  orchestration.** The center persists direct node-targeted dispatch jobs, de-duplicates them by
+  `idem_key`, clamps the requested policy down to the node's reported ceiling, rejects
+  capability/label misses, leases only jobs bound to the authenticated node, and updates lifecycle
+  from validated `job_event` telemetry. Dashboard operators holding the `dispatch:manage`
+  capability can create new node-targeted jobs from `/dispatch/new` (session + CSRF protected,
+  bounded by a per-node pending-job queue cap, `SCOOTSHIP_DISPATCH_QUEUE_LIMIT`); the `/dispatch`
+  list itself remains a read-only audit view, and there is still no cancel/retry/edit control
+  surface. Do not add broad fan-out, hidden feature flags, admin-only bypasses, raw command
+  fields, or any path that raises a node's ceiling.
 
 ## Extension workflow
 

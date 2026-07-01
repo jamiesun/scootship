@@ -3,9 +3,10 @@
 **English** | [简体中文](dispatch-threat-model.zh-CN.md)
 
 This threat model covers the EDGE.md E2 job-dispatch surface. Center-side queue, lease, idempotency,
-and lifecycle code now exists, but this document does not authorize operator-facing rollout by
-itself. Rollout remains gated until the remaining edge-side assumptions below are confirmed and the
-operator runbook is updated.
+lifecycle, and operator-facing dispatch **creation** code now exist and are covered below. This
+document is a gate artifact for that creation surface, not blanket authorization for future
+dispatch work: the separate **control** surface (cancel/retry/edit of an already-queued job) is
+out of scope here and needs its own threat-model note before it is built.
 
 ## Executive summary
 
@@ -29,21 +30,35 @@ Out of scope:
 - Changing Scoot's `docs/EDGE.md` or depending on Scoot internals.
 - Multi-tenant SaaS, billing, public internet productization, reverse-dialing, or remote shell.
 
-Assumptions that require confirmation before operator-facing rollout:
+Assumptions confirmed for the creation surface covered by this document:
 
 - Deployment remains private/VPC-style, not a public multi-tenant SaaS.
 - Dashboard operators are trusted humans, but operator accounts can be compromised and must be
   treated as a real threat source.
 - Node descriptors and capability claims are advisory, not authority.
-- Real Scoot edge will enforce an unattended readonly clamp and reject any policy above the local
-  ceiling before running a job. Scoot `main` now documents and implements the clamp as
-  `scoot -e --unattended`; the remaining edge-side gate is cwd confinement via `edge.job_root`.
+- Real Scoot edge enforces an unattended readonly clamp and rejects any policy above the local
+  ceiling before running a job. Scoot has shipped the clamp as `scoot --unattended -e "<goal>"`
+  and, as of `scoot-edge v0.8.0`, `edge.job_root` cwd confinement for dispatched jobs. The named
+  compatible contract version for this document is `scoot-edge >= v0.8.0`.
+
+Assumptions that still require confirmation before the separate dispatch **control** surface
+(cancel/retry/edit) is built:
+
+- An operator surface that can affect an already-running or queued job (not just create a new one)
+  needs its own review of authorization, audit, and rollback semantics.
 
 Open questions:
 
-- What exact `scoot-edge` contract version will contain both the unattended readonly clamp and
-  `edge.job_root` cwd confinement?
-- Should E2 be restricted to manually selected nodes first, before label/capability fan-out?
+- Should per-operator or per-source-IP rate limiting be added on top of the per-node
+  `SCOOTSHIP_DISPATCH_QUEUE_LIMIT` cap, beyond the existing dashboard login lockout?
+- Should dispatch provenance carry an explicit token fingerprint (which credential authenticated
+  the edge that eventually leases/runs the job) and a goal fingerprint (hash) for tamper-evident
+  audit, separate from the raw `goal` text? (Deferred; see TM-002/TM-008.)
+- What does the design and threat model look like for dispatch **control** (cancel/retry/edit of an
+  already-queued job)? This is unbuilt and out of scope for this document.
+- Should E2 creation be extended to label/capability fan-out (dispatch to every node matching
+  criteria) beyond today's single manually-selected node, and if so, what confirmation step does a
+  broad fan-out need?
 - What audit retention and backup requirements apply to center dispatch provenance?
 
 ## System model
@@ -61,18 +76,21 @@ Open questions:
 
 ### Data flows and trust boundaries
 
-- Operator browser -> dashboard: credentials, sessions, and future job requests over HTTPS; protected by login session, HttpOnly cookie, lockout, and security headers.
-- Dashboard -> center dispatch logic: future goals and routing criteria; must be authorized, schema-validated, and audited before entering a queue.
-- Edge -> center `/telemetry`: bearer token, status, audit batches, and future `job_event`; authenticated per node and validated before store mutation.
+- Operator browser -> dashboard: credentials, sessions, and job requests over HTTPS; protected by login session, HttpOnly cookie, lockout, and security headers.
+- Dashboard -> center dispatch logic: operator-submitted goal, target node, requested policy,
+  deadline, retries, and required labels/tools/skills; authorized by the `dispatch:manage`
+  capability, CSRF-protected, server-side validated, and audited (requestor + job_id logged) before
+  entering the queue.
+- Edge -> center `/telemetry`: bearer token, status, audit batches, and `job_event`; authenticated per node and validated before store mutation.
 - Edge -> center `/jobs/lease`: bearer token, node ID, capacity; authenticated today and must remain node-bound when jobs are returned.
-- Center -> append-only store: telemetry, future dispatch provenance, and job lifecycle state; must persist before acknowledgement where cursor or idempotency semantics depend on durability.
+- Center -> append-only store: telemetry, dispatch provenance, and job lifecycle state; must persist before acknowledgement where cursor or idempotency semantics depend on durability.
 
 #### Diagram
 
 ```mermaid
 flowchart TD
   O["Operator browser"] -->|HTTPS session| D["Embedded dashboard"]
-  D -->|future operator job request| C["Center dispatch logic"]
+  D -->|operator job request| C["Center dispatch logic"]
   E["Scoot edge"] -->|Bearer telemetry| T["Telemetry endpoint"]
   E -->|Bearer lease| L["Lease endpoint"]
   T --> S["Append only store"]
@@ -86,11 +104,11 @@ flowchart TD
 | Asset | Why it matters | Security objective |
 | --- | --- | --- |
 | Node bearer tokens | Authenticate edge nodes to telemetry and lease endpoints | C/I |
-| Operator sessions and accounts | Future dispatch authority starts from dashboard access | C/I |
+| Operator sessions and accounts | Dispatch authority starts from dashboard access | C/I |
 | Job queue and idempotency keys | Decide what work is offered to nodes and whether it repeats | I/A |
 | Node local policy ceiling | Prevents center from expanding local execution authority | I |
 | Audit batches and dispatch provenance | Evidence for what ran, why, who requested it, and result | C/I |
-| Append-only store and backups | Recovery source for telemetry, operators, tokens, and future dispatch trace | C/I/A |
+| Append-only store and backups | Recovery source for telemetry, operators, tokens, and dispatch trace | C/I/A |
 
 ## Attacker model
 
@@ -113,11 +131,11 @@ flowchart TD
 | Surface | How reached | Trust boundary | Notes | Evidence |
 | --- | --- | --- | --- | --- |
 | Dashboard login | Browser form POST | Operator -> center | Session issuance and brute-force lockout | `internal/center/auth.go`, `internal/loginguard` |
-| Future dispatch UI/API | Authenticated dashboard | Operator -> queue | Must be explicit, authorized, and audited | Dashboard dispatch is still gated; roadmap gate in `docs/roadmap.md` |
+| Dispatch creation UI | Authenticated dashboard, `dispatch:manage` capability | Operator -> queue | `/dispatch/new` (GET) and `POST /dispatch` are capability-gated, CSRF-protected, and per-node queue-bounded; `/dispatch` and `/api/dispatch` stay read-only | `internal/center/dispatch_create.go`, `internal/store` |
 | `/telemetry` | Edge HTTP POST | Edge -> center | Parses NDJSON and validates bodies before mutation | `internal/center/telemetry.go` |
 | `/jobs/lease` | Edge HTTP GET | Edge -> center | Node-token auth, node binding, capacity bound, persisted job lease | `internal/center/lease.go` |
 | Token lifecycle UI/API | Authenticated dashboard | Operator -> node auth registry | Creates, rotates, revokes center-managed tokens | `internal/center/tokens.go`, `internal/tokens` |
-| Append-only store | Server process | Center -> disk | Stores telemetry and future dispatch evidence | `internal/store` |
+| Append-only store | Server process | Center -> disk | Stores telemetry and dispatch evidence | `internal/store` |
 
 ## Top abuse paths
 
@@ -134,13 +152,13 @@ flowchart TD
 
 | Threat ID | Threat source | Prerequisites | Threat action | Impact | Impacted assets | Existing controls | Gaps | Recommended mitigations | Detection ideas | Likelihood | Impact severity | Priority |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TM-001 | Compromised operator | Future dispatch UI/API exists | Submit or fan out harmful goals | Unauthorized fleet action | Operator accounts, job queue, audit | Login/session/lockout exist; dashboard dispatch still gated | No operator dispatch authorization workflow yet | Add explicit action authz, confirmation for broad fan-out, immutable provenance | Alert on bulk dispatch and policy changes | Medium | High | High |
+| TM-001 | Compromised operator | Operator holds `dispatch:manage` and a valid session | Submit a harmful goal against a reachable node | Unauthorized node-targeted action, up to the node's own ceiling | Operator accounts, job queue, audit | Login/session/lockout, session-bound CSRF, `dispatch:manage` capability gate (separate from `fleet:view`), a per-node pending-queue cap, and requestor+job_id logging all exist; creation is node-targeted only, no fan-out surface exists to abuse | No per-operator dispatch rate limit or anomaly alerting yet; goal/token fingerprint not yet separated fields in provenance | Add dispatch-specific rate limiting/alerting on top of login lockout; add goal/token fingerprint to provenance (TM-002/TM-008) | Alert on bulk dispatch and policy changes | Medium | High | High |
 | TM-002 | Stolen node token | Token leaked from env/file/operator handling | Lease jobs or post lifecycle as a node | Job theft, fake state, audit confusion | Node tokens, job queue, provenance | Per-node bearer token, node mismatch checks, and node-bound lease exist | Token fingerprint is not yet attached to dispatch provenance | Keep jobs bound to authenticated node, rotate/revoke tokens, record token fingerprint used | Alert on token use from new IP or impossible node changes | Medium | High | High |
 | TM-003 | Malicious node | Node can report descriptor/capability | Advertise false capability to receive jobs | Misrouting and unsafe execution attempt | Node descriptors, policy ceiling | Roadmap says descriptors advisory and local ceiling gates execution | No capability verification semantics yet | Treat descriptors as routing hints only; require allowlisted labels or operator assignment for sensitive jobs | Surface descriptor drift and unexpected capability changes | Medium | Medium | Medium |
 | TM-004 | Network/client retry | E2 long-poll and lifecycle retry exist | Replay job lease or lifecycle messages | Duplicate execution or wrong terminal state | Job idempotency, queue state | Persisted `idem_key` de-duplication and terminal-state protection exist | Explicit retry scheduling remains future work | Keep duplicate lease/event idempotent; add retry-window tests when retry scheduling lands | Metrics for duplicate idem keys and late event | Medium | High | High |
-| TM-005 | Remote attacker | Center endpoint reachable | Flood lease/telemetry or claim large capacity | DoS or queue starvation | Center availability, queue fairness | Request timeouts, telemetry body cap, and max lease capacity exist | Queue length/rate limits are not yet configurable | Cap queue size and rate-limit per node/token/IP before operator rollout | Rate, queue depth, timeout, and rejection metrics | Medium | Medium | Medium |
+| TM-005 | Remote attacker or compromised operator | Center endpoint reachable, or operator session held | Flood lease/telemetry, claim large capacity, or create dispatch jobs faster than they drain | DoS or queue starvation | Center availability, queue fairness | Request timeouts, telemetry body cap, max lease capacity, a configurable per-node pending-dispatch-job cap (`SCOOTSHIP_DISPATCH_QUEUE_LIMIT`, `ErrDispatchQueueFull`), and dashboard login lockout all exist | No dedicated per-IP/per-operator rate limit on `POST /dispatch` itself beyond login lockout and the per-node queue cap | Add an explicit per-operator or per-IP dispatch-creation rate limit if abuse is observed | Rate, queue depth, timeout, and rejection metrics; alert when a node's queue sits at its cap | Medium | Medium | Medium |
 | TM-006 | Implementation bug | Developer expands dispatch path | Convert goal to shell/eval or raw command | Remote command execution | Node execution boundary | Hard rules prohibit raw commands; protocol validates closed `kind=run`; tests cover job lease bodies | No static dispatch grep/audit rule yet | Keep closed `kind=run`, no shell fields, tests proving raw command path absent | Static grep/audit rule for shell/eval in dispatch paths | Low | High | High |
-| TM-007 | Contract mismatch | Edge cwd confinement missing or version not named | Center assumes node confines readonly reads but it does not | Data over-read via readonly job | Local policy ceiling, node safety | Scoot clamp exists in `main`; E2 gate still names `edge.job_root` cwd confinement | Compatible released contract is not named | Block operator rollout until version is named and compatibility test exists | Startup warning or readiness fail if contract version unknown | Medium | High | High |
+| TM-007 | Contract mismatch | Operator or center runs against an edge older than the confining release | Center dispatches assuming cwd confinement that an old edge does not enforce | Data over-read via a readonly job on an unconfined edge | Local policy ceiling, node safety | Scoot has shipped `edge.job_root` cwd confinement in `scoot-edge v0.8.0`; the compatible version is named in `docs/roadmap.md` and this document | The center has no runtime check of which `scoot-edge` version/build is actually connecting; an operator could still point an old edge at a current center | Document the required minimum edge version prominently in deployment docs; consider a future `edge_version` compatibility warning surfaced on the node/fleet view | `edge_version` drift already exists as a health signal; consider a specific low-version warning | Low | Medium | Medium |
 | TM-008 | Store/provenance gap | Job lifecycle stored without dispatch context | Incident responders cannot prove who/what/why | Audit integrity | Dispatch provenance, audit trail | Append-only dispatch snapshots include requestor, node, policy, idem key, lifecycle, and session linkage | Goal fingerprint and token fingerprint are not yet separated fields | Add explicit fingerprints and lifecycle-without-dispatch detection | Alert on lifecycle without matching dispatch record | Medium | Medium | Medium |
 
 ## Criticality calibration
@@ -156,16 +174,16 @@ flowchart TD
 | --- | --- | --- |
 | `internal/center/lease.go` | Lease response path must remain node-bound and capacity-bounded | TM-002, TM-004 |
 | `internal/protocol/protocol.go` | Job and job-event schemas define what authority can cross the wire | TM-006, TM-007 |
-| `internal/center/auth.go` | Operator sessions gate future dispatch authority | TM-001 |
+| `internal/center/auth.go` | Operator sessions gate dispatch authority | TM-001 |
 | `internal/tokens` | Node token lifecycle controls token theft recovery | TM-002 |
-| `internal/store` | Future queue/provenance durability and idempotency belong here or behind a new focused interface | TM-004, TM-008 |
+| `internal/store` | Queue/provenance durability, idempotency, and the per-node queue cap belong here or behind a new focused interface | TM-004, TM-005, TM-008 |
 | `internal/mockedge` | E2 tests must not turn mock edge into a second Scoot implementation | TM-003, TM-007 |
 | `docs/roadmap.md` | Boundary gate and hard non-goals prevent unsafe partial dispatch | TM-006, TM-007 |
 
 ## Quality check
 
-- Entry points discovered here cover dashboard login, future dispatch UI/API, telemetry, lease, token lifecycle, and storage.
+- Entry points discovered here cover dashboard login, dispatch creation UI, telemetry, lease, token lifecycle, and storage.
 - Each trust boundary appears in at least one abuse path or threat row.
 - Runtime behavior is separated from CI/release; CI is not modeled as an E2 runtime authority path.
-- Remaining rollout assumptions stay explicit, especially edge cwd confinement and operator workflow.
-- This document is a gate artifact, not operator-facing rollout approval.
+- The separate dispatch **control** surface (cancel/retry/edit) stays explicitly out of scope and unbuilt until it gets its own threat-model note.
+- This document is a gate artifact for dispatch **creation**, not approval for the still-unbuilt **control** surface.

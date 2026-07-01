@@ -26,7 +26,8 @@
 
 scootship 是面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的**管理中心**。它实现冻结的
 `scoot-edge` v1 契约的**中心（服务端）侧**（见 Scoot 的 `docs/EDGE.md`）：通过 HTTP 摄入 append-only
-遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段二中心侧派发核心已存在，面向操作员的派发创建仍在只读审计视图后门禁。
+遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段二中心侧派发核心已存在，包括按能力门禁的
+操作员派发创建；任务控制（取消/重试）尚未构建。
 
 ## 与 Scoot 的关系（先读这个）
 
@@ -34,8 +35,8 @@ scootship 是面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的**
   所以中心是车队唯一的可信入站面，必须据此防御。
 - **协议在上游冻结。** `internal/protocol` 是 EDGE.md 的 `v:1` 信封与 bodies 的忠实转写。不要在这里
   发明字段或消息类型。若契约需要变更，那是 Scoot 仓库里 EDGE.md 级别的决定，要先在那里做。
-- **`scoot-edge` 尚不存在。** EDGE.md 处于 E0（仅设计）。没有真实边缘可供测试，这正是
-  `internal/mockedge` 存在的原因。让它保持为契约的忠实*客户端* —— 绝不是 Scoot 的第二个实现。
+- **`scoot-edge` 是可选的，且可能落后于中心契约。** 让 `internal/mockedge` 保持为公共契约的忠实
+  *客户端*，用于中心侧测试 —— 绝不是 Scoot 的第二个实现。
 - **不要依赖 Scoot 内部。** scootship 永远只说公共线缆契约。
 
 ## 常用命令
@@ -116,10 +117,12 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。`.github/w
   令牌鉴权 / 生命周期，以及 mock-edge 装置。
 - **阶段一半（已落地）：先补 E1 运维成熟度，再新增权力。** 在扩大中心权力面前，继续收紧生产 / dev
   传输、端点失败模式、审计保留 / gap 可见性、运行审计时间线、token 生命周期加固和只读健康信号。
-- **E2（当前中心侧核心，rollout 仍需门禁）：作业派发 / 编排。** 中心可以持久化直接面向节点的派发
-  任务，按 `idem_key` 去重，把请求策略降到节点已上报天花板以内，拒绝能力 / 标签不匹配，lease 时只向已鉴权
-  节点返回绑定到它的任务，并用已校验的 `job_event` 遥测更新生命周期。剩余 edge 侧上线门禁满足前，
-  仪表盘可以通过只读审计视图展示 provenance，但仍不暴露操作员派发表单。不要加入广域 fan-out、隐藏
+- **E2（当前中心侧核心；创建已开放，控制仍未开放）：作业派发 / 编排。** 中心持久化直接面向节点的
+  派发任务，按 `idem_key` 去重，把请求策略降到节点已上报天花板以内，拒绝能力 / 标签不匹配，lease
+  时只向已鉴权节点返回绑定到它的任务，并用已校验的 `job_event` 遥测更新生命周期。拥有
+  `dispatch:manage` 能力的仪表盘操作员可以从 `/dispatch/new` 创建新的、面向单个节点的任务（会话 +
+  CSRF 保护，受 `SCOOTSHIP_DISPATCH_QUEUE_LIMIT` 每节点待处理任务队列上限约束）；`/dispatch`
+  列表本身仍是只读审计视图，仍然没有取消 / 重试 / 编辑的控制面。不要加入广域 fan-out、隐藏
   feature flag、仅管理员可用的绕行、raw command 字段，或任何会抬高节点天花板的路径。
 
 ## 扩展工作流

@@ -19,8 +19,13 @@ const (
 	// per node in memory for API/dashboard reads. All accepted events are still
 	// persisted to the append-only JSONL log before they are acked.
 	DefaultAuditRetentionEvents = 1000
-	auditGapKind                = "audit_gap"
-	auditGapReasonRetention     = "retention_limit"
+	// DefaultDispatchQueueLimitPerNode caps how many non-terminal (queued/leased/
+	// accepted/running) dispatch jobs a single node may have outstanding at once.
+	// This bounds operator-created dispatch queue growth per node; it does not
+	// affect audit ingest or telemetry.
+	DefaultDispatchQueueLimitPerNode = 200
+	auditGapKind                     = "audit_gap"
+	auditGapReasonRetention          = "retention_limit"
 )
 
 // Options controls the center-side in-memory index. It does not weaken the
@@ -28,6 +33,10 @@ const (
 // JSONL log first.
 type Options struct {
 	AuditRetentionEvents int
+	// DispatchQueueLimitPerNode bounds how many non-terminal dispatch jobs one
+	// node may have queued/leased/running at the same time. New jobs beyond the
+	// limit are rejected with ErrDispatchQueueFull instead of persisted.
+	DispatchQueueLimitPerNode int
 }
 
 // persistRecord is one line in the append-only log. Exactly one payload field is
@@ -109,6 +118,9 @@ func OpenWithOptions(dataDir string, opts Options) (*Mem, error) {
 func normalizeOptions(opts Options) Options {
 	if opts.AuditRetentionEvents <= 0 {
 		opts.AuditRetentionEvents = DefaultAuditRetentionEvents
+	}
+	if opts.DispatchQueueLimitPerNode <= 0 {
+		opts.DispatchQueueLimitPerNode = DefaultDispatchQueueLimitPerNode
 	}
 	return opts
 }
@@ -369,7 +381,10 @@ func (m *Mem) buildDispatchJobLocked(recvMS int64, req DispatchRequest) (Dispatc
 	}
 	node, ok := m.nodes[req.NodeID]
 	if !ok {
-		return DispatchJob{}, fmt.Errorf("unknown node %q", req.NodeID)
+		return DispatchJob{}, fmt.Errorf("%w: %q", ErrUnknownNode, req.NodeID)
+	}
+	if limit := m.options.DispatchQueueLimitPerNode; limit > 0 && m.pendingDispatchCountLocked(req.NodeID) >= limit {
+		return DispatchJob{}, fmt.Errorf("%w: node %q already has %d pending jobs", ErrDispatchQueueFull, req.NodeID, limit)
 	}
 	policy, err := clampDispatchPolicy(req.RequestedPolicy, node.view.PolicyCeiling)
 	if err != nil {
@@ -734,6 +749,21 @@ func isTerminalDispatchPhase(phase string) bool {
 	default:
 		return false
 	}
+}
+
+// pendingDispatchCountLocked counts dispatch jobs targeting nodeID that have
+// not reached a terminal phase yet, bounding unattended queue growth.
+func (m *Mem) pendingDispatchCountLocked(nodeID string) int {
+	count := 0
+	for _, job := range m.jobs {
+		if job == nil || job.NodeID != nodeID {
+			continue
+		}
+		if !isTerminalDispatchPhase(job.Phase) {
+			count++
+		}
+	}
+	return count
 }
 
 func cloneDispatchJob(job DispatchJob) DispatchJob {

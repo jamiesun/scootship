@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -465,5 +466,76 @@ func TestDispatchReplayRebuildsJobs(t *testing.T) {
 	}
 	if !duplicate || dup.JobID != "j-1" {
 		t.Fatalf("idem index not rebuilt: duplicate=%v job=%+v", duplicate, dup)
+	}
+}
+
+func TestEnqueueJobUnknownNode(t *testing.T) {
+	m, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	_, _, err = m.EnqueueJob(1000, DispatchRequest{
+		JobID:      "j-1",
+		IdemKey:    "idem-1",
+		NodeID:     "n-missing",
+		Goal:       "summarize",
+		DeadlineTS: 10_000,
+	})
+	if !errors.Is(err, ErrUnknownNode) {
+		t.Fatalf("want ErrUnknownNode, got %v", err)
+	}
+	if _, ok := m.Job("j-1"); ok {
+		t.Fatal("job persisted despite unknown node")
+	}
+}
+
+func TestEnqueueJobDispatchQueueFull(t *testing.T) {
+	m, err := OpenWithOptions("", Options{DispatchQueueLimitPerNode: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if err := m.UpsertStatus("n-1", 1000, 900, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.EnqueueJob(1100, DispatchRequest{
+		JobID:      "j-1",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "first job",
+		DeadlineTS: 10_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = m.EnqueueJob(1200, DispatchRequest{
+		JobID:      "j-2",
+		IdemKey:    "idem-2",
+		NodeID:     "n-1",
+		Goal:       "second job should be rejected",
+		DeadlineTS: 10_000,
+	})
+	if !errors.Is(err, ErrDispatchQueueFull) {
+		t.Fatalf("want ErrDispatchQueueFull, got %v", err)
+	}
+	if _, ok := m.Job("j-2"); ok {
+		t.Fatal("second job persisted despite full queue")
+	}
+
+	// Once the first job reaches a terminal phase, the slot frees up.
+	if err := m.RecordJobEvent("n-1", 1300, protocol.JobEventBody{JobID: "j-1", Phase: protocol.JobPhaseDone}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.EnqueueJob(1400, DispatchRequest{
+		JobID:      "j-3",
+		IdemKey:    "idem-3",
+		NodeID:     "n-1",
+		Goal:       "third job fits after first finished",
+		DeadlineTS: 10_000,
+	}); err != nil {
+		t.Fatalf("expected room after terminal job: %v", err)
 	}
 }

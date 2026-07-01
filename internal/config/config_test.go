@@ -33,6 +33,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.AuditRetentionEvents != 1000 {
 		t.Fatalf("AuditRetentionEvents = %d, want 1000", cfg.AuditRetentionEvents)
 	}
+	if cfg.DispatchQueueLimit != 200 {
+		t.Fatalf("DispatchQueueLimit = %d, want 200", cfg.DispatchQueueLimit)
+	}
 	if cfg.LoginMaxFails != 5 || cfg.LoginWindow != 15*time.Minute || cfg.LoginLockout != 15*time.Minute {
 		t.Fatalf("unexpected login guard defaults: %+v", cfg)
 	}
@@ -62,6 +65,7 @@ func TestFromEnvOverrides(t *testing.T) {
 		"SCOOTSHIP_STALE_SECONDS":          "45",
 		"SCOOTSHIP_MAX_TELEMETRY_BYTES":    "1024",
 		"SCOOTSHIP_AUDIT_RETENTION_EVENTS": "250",
+		"SCOOTSHIP_DISPATCH_QUEUE_LIMIT":   "50",
 		"SCOOTSHIP_LOGIN_MAX_FAILS":        "7",
 		"SCOOTSHIP_LOGIN_WINDOW_SECONDS":   "60",
 		"SCOOTSHIP_LOGIN_LOCKOUT_SECONDS":  "120",
@@ -83,7 +87,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	if cfg.NodeTokensFile != "/run/scootship/tokens.json" || cfg.NodeTokensInline != "n-1=t-1" {
 		t.Fatalf("node token overrides not applied: %+v", cfg)
 	}
-	if !cfg.Dev || cfg.StaleSeconds != 45 || cfg.MaxTelemetryByte != 1024 || cfg.AuditRetentionEvents != 250 {
+	if !cfg.Dev || cfg.StaleSeconds != 45 || cfg.MaxTelemetryByte != 1024 || cfg.AuditRetentionEvents != 250 || cfg.DispatchQueueLimit != 50 {
 		t.Fatalf("runtime overrides not applied: %+v", cfg)
 	}
 	if cfg.LoginMaxFails != 7 || cfg.LoginWindow != time.Minute || cfg.LoginLockout != 2*time.Minute {
@@ -105,12 +109,13 @@ func TestFromEnvFallsBackOnInvalidIntegers(t *testing.T) {
 		"SCOOTSHIP_STALE_SECONDS":          "not-a-number",
 		"SCOOTSHIP_MAX_TELEMETRY_BYTES":    "bad",
 		"SCOOTSHIP_AUDIT_RETENTION_EVENTS": "0",
+		"SCOOTSHIP_DISPATCH_QUEUE_LIMIT":   "-5",
 		"SCOOTSHIP_LOGIN_MAX_FAILS":        "bad",
 		"SCOOTSHIP_LOGIN_WINDOW_SECONDS":   "bad",
 		"SCOOTSHIP_LOGIN_LOCKOUT_SECONDS":  "bad",
 	}))
 
-	if cfg.StaleSeconds != 90 || cfg.MaxTelemetryByte != 8*1024*1024 || cfg.AuditRetentionEvents != 1000 || cfg.LoginMaxFails != 5 {
+	if cfg.StaleSeconds != 90 || cfg.MaxTelemetryByte != 8*1024*1024 || cfg.AuditRetentionEvents != 1000 || cfg.LoginMaxFails != 5 || cfg.DispatchQueueLimit != 200 {
 		t.Fatalf("integer defaults not preserved: %+v", cfg)
 	}
 	if cfg.LoginWindow != 15*time.Minute || cfg.LoginLockout != 15*time.Minute {

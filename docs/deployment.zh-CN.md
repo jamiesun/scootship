@@ -2,8 +2,10 @@
 
 [English](deployment.md) | **简体中文**
 
-本文是 Scootship center 的真实运维手册，覆盖生产传输、存储、备份与恢复。中心侧 E2 派发记录可能存在，
-但本文不启用面向操作员的派发上线，也不授予中心抬高节点本地策略上限的权力。
+本文是 Scootship center 的真实运维手册，覆盖生产传输、存储、备份与恢复。中心会持久化 E2 派发记录，
+并让拥有 `dispatch:manage` 能力的操作员创建面向单个节点的派发任务；本手册不授予中心任何抬高
+节点本地策略上限的权力，也不是对单独、仍未构建的派发**控制**面（取消 / 重试 / 编辑一个已
+存在任务）的威胁模型审查——那部分请见 [`dispatch-threat-model.zh-CN.md`](dispatch-threat-model.zh-CN.md)。
 
 ## 生产边界
 
@@ -71,7 +73,7 @@ sudo chmod 0640 /etc/scootship/scootship.env
 操作员应从仪表盘管理。不要把真实密码留在 shell 历史里。
 
 bootstrap 操作员和旧版本遗留操作员会获得所有当前内置能力（`fleet:view`、`tokens:manage`、
-`operators:manage`），避免升级后锁死治理入口。新建操作员应只授予所需能力。
+`operators:manage`、`dispatch:manage`），避免升级后锁死治理入口。新建操作员应只授予所需能力。
 
 仪表盘令牌管理由中心侧生成节点 bearer token。创建或轮换后 secret 只显示一次；之后仪表盘和 API
 只暴露节点 ID、来源、指纹与鉴权活动。把生成的 secret 写入同一节点 ID 的 edge 配置。当前
@@ -238,5 +240,7 @@ sudo journalctl -u scootship -n 100 --no-pager
 - 不要把 bearer token、TLS 私钥或真实 bootstrap 密码保存到仓库。
 - 不要把备份复制到低信任工单系统或聊天记录。
 - 依赖 TLS 反代时，不要暴露明文监听地址。
-- 不要把本文档视为面向操作员的派发上线授权；`/jobs/lease` 只返回已持久化且绑定到节点的任务，
-  仪表盘仍不暴露派发表单。
+- 不要把本文档当作对派发**控制**（取消 / 重试 / 编辑一个已存在任务）的威胁模型审查；请见
+  `docs/dispatch-threat-model.zh-CN.md`。派发**创建**受能力门禁（`dispatch:manage`）、CSRF
+  保护，并受每节点 `SCOOTSHIP_DISPATCH_QUEUE_LIMIT` 约束，但 `/jobs/lease` 仍只返回已持久化且
+  绑定到节点的任务，对已存在任务仍没有取消 / 重试 / 编辑 UI。
