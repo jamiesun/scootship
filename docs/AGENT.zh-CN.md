@@ -26,7 +26,7 @@
 
 scootship 是面向 [Scoot](https://github.com/jamiesun/scoot) agent 车队的**管理中心**。它实现冻结的
 `scoot-edge` v1 契约的**中心（服务端）侧**（见 Scoot 的 `docs/EDGE.md`）：通过 HTTP 摄入 append-only
-遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段二中心侧派发核心已存在，面向操作员的派发上线仍需门禁。
+遥测，并从单个 Go 二进制提供嵌入式 admin dashboard。阶段二中心侧派发核心已存在，面向操作员的派发创建仍在只读审计视图后门禁。
 
 ## 与 Scoot 的关系（先读这个）
 
@@ -119,8 +119,8 @@ GitHub Actions 通过 `.github/workflows/ci.yml` 镜像这些检查。`.github/w
 - **E2（当前中心侧核心，rollout 仍需门禁）：作业派发 / 编排。** 中心可以持久化直接面向节点的派发
   任务，按 `idem_key` 去重，把请求策略降到节点已上报天花板以内，拒绝能力 / 标签不匹配，lease 时只向已鉴权
   节点返回绑定到它的任务，并用已校验的 `job_event` 遥测更新生命周期。剩余 edge 侧上线门禁满足前，
-  仪表盘仍不暴露操作员派发表单。不要加入广域 fan-out、隐藏 feature flag、仅管理员可用的绕行、raw command
-  字段，或任何会抬高节点天花板的路径。
+  仪表盘可以通过只读审计视图展示 provenance，但仍不暴露操作员派发表单。不要加入广域 fan-out、隐藏
+  feature flag、仅管理员可用的绕行、raw command 字段，或任何会抬高节点天花板的路径。
 
 ## 扩展工作流
 

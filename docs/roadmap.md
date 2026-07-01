@@ -112,8 +112,9 @@ Once done, Scootship should look like this:
 - **Operational trust comes before remote orchestration.** Center-side E2 dispatch code must grow
   behind explicit gates: production/dev transport boundaries are tested, deployment and recovery are
   documented, audit lifecycle and gaps are implemented, node auth can be governed, health signals
-  are clear on the dashboard, and operator-facing dispatch remains withheld until the edge-side
-  rollout assumptions are satisfied.
+  are clear on the dashboard, and operator-facing dispatch creation/control remains withheld until
+  the edge-side rollout assumptions are satisfied. Read-only dispatch audit may show provenance
+  without creating a new power surface.
 
 Priorities when qualities conflict (highest to lowest):
 
@@ -195,6 +196,10 @@ Phase 2 center-side dispatch core has landed, while operator-facing dispatch rol
 - **Lifecycle telemetry validation.** `job_event` bodies are validated before mutation and update
   dispatch lifecycle/provenance from append-only telemetry (`internal/protocol`,
   `internal/center/telemetry.go`, `internal/store`).
+- **Read-only dispatch audit.** Authenticated dashboard/API views can inspect persisted dispatch
+  jobs, lifecycle phase, target node, requested/effective policy, idempotency key, reject reason,
+  and `session_id` correlation without exposing any operator dispatch form or write-capable API
+  (`internal/center`, `internal/web`).
 
 The dashboard still exposes no operator dispatch form or broad fan-out control. Full E2 rollout
 remains gated on the remaining Scoot edge-side `edge.job_root` confinement assumption and operator
@@ -325,8 +330,9 @@ ceiling / does not execute raw commands". The center-side core now exists, but o
 dispatch remains deliberately gated until every rollout condition below is satisfied, including the
 remaining Scoot edge-side cwd confinement assumption.
 
-The E2 dispatch gate is all-or-nothing. Do not expose partial dispatch UI/API, hidden feature flags,
-or "admin-only" bypasses until these conditions are met:
+The E2 dispatch gate is all-or-nothing for write-capable dispatch. Do not expose partial dispatch
+creation/control UI/API, hidden feature flags, or "admin-only" bypasses until these conditions are
+met:
 
 - E1 transport behavior is tested for direct TLS, trusted TLS proxy, explicit dev mode, and fail-closed
   plain HTTP.
@@ -350,8 +356,9 @@ visibility, token lifecycle governance, run audit timelines, read-only health si
 failure modes, and strict telemetry body validation. Scoot `main` now documents and implements the
 unattended one-shot clamp (`scoot -e --unattended`) as the E2 keystone prerequisite, while its
 EDGE.md still gates E2 rollout on `edge.job_root` cwd confinement. Scootship now has dispatch queue,
-lease, idempotency, capability-miss rejection, and lifecycle tests. Operator-facing dispatch UI/API
-remains blocked until the remaining edge-side assumption and operator documentation are satisfied.
+lease, idempotency, capability-miss rejection, lifecycle tests, and a read-only dispatch audit
+surface. Operator-facing dispatch creation/control UI/API remains blocked until the remaining
+edge-side assumption and operator documentation are satisfied.
 
 - **Long-poll-based job dispatch.** Implemented for direct node-targeted jobs:
   `GET /jobs/lease?node=&capacity=`: route jobs by a node's most recent capability / label
@@ -366,13 +373,15 @@ remains blocked until the remaining edge-side assumption and operator documentat
   only request a policy `≤` the node's local
   ceiling, defaulting to `readonly`; the center UI / API offers no entry point to "raise a node's
   ceiling".
-- **Dispatch-provenance audit.** Partially implemented: the center records dispatch provenance and
-  updates lifecycle/session linkage; joining it
-  back to the ingested Scoot run audit via `session_id`, forming an end-to-end traceable chain.
+- **Dispatch-provenance audit.** Implemented as a read-only audit surface: the center records
+  dispatch provenance, updates lifecycle/session linkage, and exposes the queue/provenance for
+  inspection; `session_id` can join it back to ingested Scoot run audit, forming an end-to-end
+  traceable chain.
 - **E2 prerequisites are explicit.** Queue semantics, capability / label matching, `idem_key`
-  idempotency, capacity bounding, deadlines, `job_event` handling, dispatch provenance, and the
-  Scoot-side unattended readonly clamp now exist as code plus tests or upstream contract evidence;
-  operator-facing dispatch still waits on the remaining edge cwd confinement and runbook work.
+  idempotency, capacity bounding, deadlines, `job_event` handling, read-only dispatch provenance,
+  and the Scoot-side unattended readonly clamp now exist as code plus tests or upstream contract
+  evidence; operator-facing dispatch creation still waits on the remaining edge cwd confinement and
+  runbook work.
 
 ### Phase 3 · Governance and operational scale
 

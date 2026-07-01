@@ -1062,6 +1062,114 @@ func TestLeaseReturnsQueuedNodeBoundJob(t *testing.T) {
 	}
 }
 
+func TestDispatchDashboardReadOnlyAuditView(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{
+		PolicyCeiling: protocol.PolicyReadonly,
+		Node: &protocol.NodeDescriptor{
+			Labels:       []string{"role:db"},
+			Capabilities: &protocol.Capabilities{Tools: []string{"grep"}, Skills: []string{"audit"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.EnqueueJob(now+1, store.DispatchRequest{
+		JobID:          "j-1",
+		IdemKey:        "idem-1",
+		NodeID:         "n-1",
+		Goal:           "summarize audit anomalies",
+		DeadlineTS:     now + 60_000,
+		Requestor:      "admin",
+		RequiredLabels: []string{"role:db"},
+		RequiredTools:  []string{"grep"},
+		RequiredSkills: []string{"audit"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordJobEvent("n-1", now+2, protocol.JobEventBody{
+		JobID:           "j-1",
+		Phase:           protocol.JobPhaseRunning,
+		SessionID:       "s-1",
+		EffectivePolicy: protocol.PolicyReadonly,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	client := loginClient(t, ts.URL)
+	resp, err := client.Get(ts.URL + "/dispatch?lang=zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dispatch page status=%d body=%s", resp.StatusCode, body)
+	}
+	text := string(body)
+	for _, want := range []string{"派发审计", "只读审计", "j-1", "summarize audit anomalies", "role:db", "grep", "s-1", "readonly"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("dispatch page missing %q: %s", want, text)
+		}
+	}
+	if strings.Contains(text, `action="/dispatch"`) || strings.Contains(text, `method="post" action="/dispatch"`) {
+		t.Fatalf("dispatch page exposed a dispatch mutation form: %s", text)
+	}
+}
+
+func TestAPIDispatchReadOnlyAndPostAbsent(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.EnqueueJob(now+1, store.DispatchRequest{
+		JobID:      "j-1",
+		IdemKey:    "idem-1",
+		NodeID:     "n-1",
+		Goal:       "summarize audit anomalies",
+		DeadlineTS: now + 60_000,
+		Requestor:  "admin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	client := loginClient(t, ts.URL)
+	resp, err := client.Get(ts.URL + "/api/dispatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dispatch api status=%d body=%s", resp.StatusCode, body)
+	}
+	var got struct {
+		Total  int `json:"total"`
+		Queued int `json:"queued"`
+		Jobs   []struct {
+			Job store.DispatchJob `json:"job"`
+		} `json:"jobs"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 1 || got.Queued != 1 || len(got.Jobs) != 1 || got.Jobs[0].Job.JobID != "j-1" {
+		t.Fatalf("bad dispatch api payload: %+v body=%s", got, body)
+	}
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/dispatch", strings.NewReader("goal=run"))
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /dispatch status=%d, want 405", resp.StatusCode)
+	}
+}
+
 func TestLeaseRejectsNodeMismatch(t *testing.T) {
 	ts, _ := newTestServer(t)
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/jobs/lease?node=n-other&capacity=1", nil)

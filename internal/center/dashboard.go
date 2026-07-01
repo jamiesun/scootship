@@ -64,6 +64,29 @@ type nodePage struct {
 	Audits        []store.StoredAudit
 }
 
+type dispatchPage struct {
+	basePage
+	Total      int
+	Queued     int
+	ActiveJobs int
+	Done       int
+	Rejected   int
+	Jobs       []dispatchJobRow
+}
+
+type dispatchJobRow struct {
+	Job          store.DispatchJob `json:"job"`
+	NodeKnown    bool              `json:"node_known"`
+	NodeOnline   bool              `json:"node_online"`
+	CreatedAgo   string            `json:"created_ago"`
+	UpdatedAgo   string            `json:"updated_ago"`
+	LeasedAgo    string            `json:"leased_ago"`
+	DeadlineAgo  string            `json:"deadline_ago"`
+	PhaseClass   string            `json:"phase_class"`
+	PolicyClass  string            `json:"policy_class"`
+	TargetStatus string            `json:"target_status"`
+}
+
 type tokenRow struct {
 	NodeID               string `json:"node_id"`
 	Source               string `json:"source"`
@@ -163,6 +186,12 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "node", page)
 }
 
+func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
+	user, _ := s.currentUser(r)
+	page := s.dispatchPage(r, user)
+	s.render(w, "dispatch", page)
+}
+
 func (s *Server) handleAPIFleet(w http.ResponseWriter, _ *http.Request) {
 	nodes := s.store.Nodes()
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -187,6 +216,19 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 		"health":    s.nodeHealthSignals("en", n, ctx),
 		"audits":    s.store.AuditEvents(id, 100),
 		"timelines": s.store.AuditTimelines(id, 25),
+	})
+}
+
+func (s *Server) handleAPIDispatch(w http.ResponseWriter, r *http.Request) {
+	page := s.dispatchPage(r, "")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"now_ms":   s.now().UnixMilli(),
+		"total":    page.Total,
+		"queued":   page.Queued,
+		"active":   page.ActiveJobs,
+		"done":     page.Done,
+		"rejected": page.Rejected,
+		"jobs":     page.Jobs,
 	})
 }
 
@@ -252,6 +294,58 @@ func (s *Server) tokenRows(lang string) []tokenRow {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func (s *Server) dispatchPage(r *http.Request, user string) dispatchPage {
+	lang := requestLang(r)
+	nodes := map[string]store.NodeView{}
+	for _, n := range s.store.Nodes() {
+		nodes[n.NodeID] = n
+	}
+	page := dispatchPage{
+		basePage: s.base(r, user, "dispatch", "page.dispatch"),
+	}
+	for _, job := range s.store.Jobs() {
+		row := dispatchJobRow{
+			Job:         job,
+			CreatedAgo:  s.agoLang(lang, job.CreatedMS),
+			UpdatedAgo:  s.agoLang(lang, job.UpdatedMS),
+			LeasedAgo:   s.agoLang(lang, job.LeasedMS),
+			DeadlineAgo: s.agoLang(lang, job.DeadlineTS),
+			PhaseClass:  cleanClass(job.Phase),
+			PolicyClass: cleanClass(job.RequestedPolicy),
+		}
+		if row.PhaseClass == "" {
+			row.PhaseClass = "unknown"
+		}
+		if row.PolicyClass == "" {
+			row.PolicyClass = "unknown"
+		}
+		if n, ok := nodes[job.NodeID]; ok {
+			row.NodeKnown = true
+			row.NodeOnline = s.online(n.LastSeenMS)
+			if row.NodeOnline {
+				row.TargetStatus = tr(lang, "fleet.online")
+			} else {
+				row.TargetStatus = tr(lang, "fleet.stale")
+			}
+		} else {
+			row.TargetStatus = tr(lang, "tokens.not_reported")
+		}
+		page.Total++
+		switch job.Phase {
+		case "queued":
+			page.Queued++
+		case "leased", "accepted", "running":
+			page.ActiveJobs++
+		case "done", "failed":
+			page.Done++
+		case "rejected":
+			page.Rejected++
+		}
+		page.Jobs = append(page.Jobs, row)
+	}
+	return page
 }
 
 // --- view helpers ---
@@ -348,6 +442,20 @@ func trunc(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+func cleanClass(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		if r == '_' || r == '-' {
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
 }
 
 // initial returns the uppercased first letter of s, for the sidebar avatar.

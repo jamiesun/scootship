@@ -1,0 +1,68 @@
+{{define "dispatch"}}{{template "header" .}}
+    <section class="page-head">
+      <h1>{{t .Lang "page.dispatch"}} <span class="pill muted-pill">{{t .Lang "dispatch.read_only"}}</span></h1>
+      <p class="muted">{{t .Lang "dispatch.metadata"}}</p>
+    </section>
+
+    <section class="summary">
+      <div class="stat">
+        <span class="num">{{.Total}}</span>
+        <span class="lbl">{{t .Lang "dispatch.total"}}</span>
+      </div>
+      <div class="stat">
+        <span class="num {{if .Queued}}warn{{end}}">{{.Queued}}</span>
+        <span class="lbl">{{t .Lang "dispatch.queued"}}</span>
+      </div>
+      <div class="stat">
+        <span class="num {{if .ActiveJobs}}warn{{end}}">{{.ActiveJobs}}</span>
+        <span class="lbl">{{t .Lang "dispatch.active"}}</span>
+      </div>
+      <div class="stat">
+        <span class="num ok">{{.Done}}</span>
+        <span class="lbl">{{t .Lang "dispatch.done"}}</span>
+      </div>
+      <div class="stat">
+        <span class="num {{if .Rejected}}warn{{end}}">{{.Rejected}}</span>
+        <span class="lbl">{{t .Lang "dispatch.rejected"}}</span>
+      </div>
+    </section>
+
+    {{if .Jobs}}
+    <section class="dispatch-board">
+      {{range .Jobs}}
+      <article class="dispatch-item">
+        <div class="dispatch-main">
+          <div class="dispatch-title">
+            <span class="mono">{{.Job.JobID}}</span>
+            <span class="phase phase-{{.PhaseClass}}">{{.Job.Phase}}</span>
+            <span class="ceiling ceiling-{{.PolicyClass}}">{{.Job.RequestedPolicy}}</span>
+          </div>
+          <p class="dispatch-goal">{{trunc .Job.Goal 220}}</p>
+          <div class="dispatch-tags">
+            {{range .Job.RequiredLabels}}<span class="tag">{{.}}</span>{{end}}
+            {{range .Job.RequiredTools}}<span class="tag">tool:{{.}}</span>{{end}}
+            {{range .Job.RequiredSkills}}<span class="tag">skill:{{.}}</span>{{end}}
+          </div>
+        </div>
+        <dl class="dispatch-meta">
+          <div><dt>{{t $.Lang "fleet.node"}}</dt><dd>{{if .NodeKnown}}<a href="/nodes/{{pathEscape .Job.NodeID}}" class="node-link">{{.Job.NodeID}}</a>{{else}}<span class="mono">{{.Job.NodeID}}</span>{{end}} <span class="pill {{if .NodeOnline}}ok{{else}}muted-pill{{end}}">{{.TargetStatus}}</span></dd></div>
+          <div><dt>{{t $.Lang "dispatch.requestor"}}</dt><dd>{{or .Job.Requestor "—"}}</dd></div>
+          <div><dt>{{t $.Lang "dispatch.idem_key"}}</dt><dd class="mono muted">{{.Job.IdemKey}}</dd></div>
+          <div><dt>{{t $.Lang "dispatch.created"}}</dt><dd>{{.CreatedAgo}}</dd></div>
+          <div><dt>{{t $.Lang "dispatch.updated"}}</dt><dd>{{.UpdatedAgo}}</dd></div>
+          <div><dt>{{t $.Lang "dispatch.deadline"}}</dt><dd>{{.DeadlineAgo}}</dd></div>
+          {{if .Job.LeasedMS}}<div><dt>{{t $.Lang "dispatch.leased"}}</dt><dd>{{.LeasedAgo}} · {{t $.Lang "dispatch.attempts"}} {{.Job.Attempts}}</dd></div>{{end}}
+          {{if .Job.SessionID}}<div><dt>{{t $.Lang "dispatch.session"}}</dt><dd class="mono">{{.Job.SessionID}}</dd></div>{{end}}
+          {{if .Job.EffectivePolicy}}<div><dt>{{t $.Lang "dispatch.effective_policy"}}</dt><dd><span class="ceiling ceiling-{{.Job.EffectivePolicy}}">{{.Job.EffectivePolicy}}</span></dd></div>{{end}}
+          {{if .Job.RejectReason}}<div><dt>{{t $.Lang "dispatch.reject_reason"}}</dt><dd class="warn">{{.Job.RejectReason}}</dd></div>{{end}}
+        </dl>
+      </article>
+      {{end}}
+    </section>
+    {{else}}
+    <section class="empty">
+      <h2>{{t .Lang "dispatch.empty_title"}}</h2>
+      <p>{{t .Lang "dispatch.empty_body"}}</p>
+    </section>
+    {{end}}
+{{template "footer" .}}{{end}}
