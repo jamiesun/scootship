@@ -28,11 +28,11 @@
         <span class="nav-label">{{t .Lang "page.operators"}}</span>
       </a>{{end}}
 
-      <span class="nav-item disabled" title="{{t .Lang "layout.dispatch_title"}}">
+      {{if .CanViewFleet}}<a class="nav-item {{if eq .Active "dispatch"}}active{{end}}" href="/dispatch" title="{{t .Lang "layout.dispatch_title"}}">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         <span class="nav-label">{{t .Lang "layout.dispatch"}}</span>
-        <span class="soon">E2</span>
-      </span>
+        <span class="soon">{{t .Lang "layout.dispatch_badge"}}</span>
+      </a>{{end}}
     </nav>
     <div class="side-bottom">
       <details class="settings-menu {{if or (eq .Active "settings") (eq .Active "operators") (eq .Active "account")}}active{{end}}">

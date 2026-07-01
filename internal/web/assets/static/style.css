@@ -550,6 +550,41 @@ td.warn,
     color: var(--ok);
 }
 
+.phase {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--muted);
+}
+.phase-queued {
+    color: var(--warn);
+    background: rgba(224, 164, 88, 0.12);
+    border-color: rgba(224, 164, 88, 0.28);
+}
+.phase-leased,
+.phase-accepted,
+.phase-running {
+    color: var(--accent);
+    background: rgba(90, 169, 255, 0.12);
+    border-color: rgba(90, 169, 255, 0.28);
+}
+.phase-done {
+    color: var(--ok);
+    background: rgba(76, 195, 138, 0.13);
+    border-color: rgba(76, 195, 138, 0.28);
+}
+.phase-failed,
+.phase-rejected {
+    color: var(--danger);
+    background: rgba(229, 104, 122, 0.14);
+    border-color: rgba(229, 104, 122, 0.32);
+}
+
 .empty {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -711,6 +746,63 @@ table.audit td {
 .timeline-events th:first-child,
 .timeline-events td:first-child {
     width: 72px;
+}
+
+.dispatch-board {
+    display: grid;
+    gap: 12px;
+}
+.dispatch-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.58fr);
+    gap: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+}
+.dispatch-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-weight: 700;
+}
+.dispatch-goal {
+    margin: 10px 0;
+    color: #c9d3df;
+    overflow-wrap: anywhere;
+}
+.dispatch-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.dispatch-tags .tag {
+    margin-left: 0;
+}
+.dispatch-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    margin: 0;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+}
+.dispatch-meta div {
+    min-width: 0;
+}
+.dispatch-meta dt {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.dispatch-meta dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
 }
 
 .stack-form,
@@ -1032,5 +1124,15 @@ table.audit td {
     }
     .cols {
         grid-template-columns: 1fr;
+    }
+    .dispatch-item {
+        grid-template-columns: 1fr;
+    }
+    .dispatch-meta {
+        grid-template-columns: 1fr;
+        padding-left: 0;
+        padding-top: 12px;
+        border-left: none;
+        border-top: 1px solid var(--border);
     }
 }

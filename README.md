@@ -16,7 +16,8 @@ protocol and serves an embedded admin dashboard so you can observe the whole fle
 > The center ingests `status` heartbeats and `audit_batch` log shipping and renders the fleet.
 > Task **dispatch/orchestration (EDGE.md E2)** now has a persisted center-side queue, node-bound
 > lease output, lifecycle ingestion, and idempotency/provenance tests. The dashboard still exposes
-> no operator dispatch form until the remaining edge-side rollout gate is satisfied. See
+> only a read-only Dispatch audit view, with no operator dispatch form until the remaining
+> edge-side rollout gate is satisfied. See
 > [`docs/roadmap.md`](docs/roadmap.md) for the project shape, boundaries, and direction.
 
 ## Why a separate companion
@@ -73,7 +74,7 @@ go run ./cmd/scootship mock-edge -ship-audit
 
 Open <http://localhost:8080>. You'll be redirected to a sign-in page — in dev mode log in with
 `admin` / `admin`. After signing in you get the dashboard shell with a **collapsible left
-sidebar** (Fleet, Tokens, Operators + a Settings menu with Account), plus top-right sign-out:
+sidebar** (Fleet, Dispatch, Tokens, Operators + a Settings menu with Account), plus top-right sign-out:
 the `n-dev` node goes **online**, with its policy ceiling, derived audit counts, capability
 labels, and (because `-ship-audit` is on) a few ingested audit events on the node detail page.
 
@@ -168,7 +169,8 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
   node. Dispatch records are append-only JSONL snapshots with `idem_key` de-duplication, node
   binding, capability/label miss rejection (`no_matching_capability`), only-lower policy clamping
   against the node's reported ceiling, and lifecycle updates from validated `job_event` telemetry.
-  The dashboard still has no operator dispatch form while the remaining edge rollout gate is open.
+  The dashboard exposes this queue/provenance through a read-only Dispatch audit view and JSON API,
+  but still has no operator dispatch form while the remaining edge rollout gate is open.
 
 scootship talks only this contract; it does not depend on any Scoot internal.
 
@@ -183,7 +185,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `internal/operators` | Dashboard operator accounts, direct capabilities, profile/password management, and password hashing. |
 | `internal/loginguard` | Per-source-IP brute-force throttle for dashboard logins (failure window + lockout). |
 | `internal/config` | Environment-driven configuration. |
-| `internal/center` | HTTP server, bearer + login-session auth, capability gates, CSRF checks, telemetry ingest, node-bound lease dispatch, read-only health signals, dashboard + JSON API. |
+| `internal/center` | HTTP server, bearer + login-session auth, capability gates, CSRF checks, telemetry ingest, node-bound lease dispatch, read-only health/dispatch audit signals, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
 | `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
 | `internal/version` | Build version string; release builds override it from the tag. |

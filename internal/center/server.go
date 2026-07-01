@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	// Dashboard + JSON API (login-session auth).
 	mux.Handle("GET /{$}", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleFleet))))
 	mux.Handle("GET /nodes/{id}", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleNode))))
+	mux.Handle("GET /dispatch", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleDispatch))))
 	mux.Handle("POST /logout", s.requireAdmin(s.requireCSRF(http.HandlerFunc(s.handleLogout))))
 	mux.Handle("GET /tokens", s.requireAdmin(s.requireCapability(operators.CapabilityTokenManage, http.HandlerFunc(s.handleTokens))))
 	mux.Handle("GET /tokens/new", s.requireAdmin(s.requireCapability(operators.CapabilityTokenManage, http.HandlerFunc(s.handleTokenCreatePage))))
@@ -112,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /operators/{username}", s.requireAdmin(s.requireCapability(operators.CapabilityOperatorManage, s.requireCSRF(http.HandlerFunc(s.handleOperatorUpdate)))))
 	mux.Handle("GET /api/fleet", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleAPIFleet))))
 	mux.Handle("GET /api/nodes/{id}", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleAPINode))))
+	mux.Handle("GET /api/dispatch", s.requireAdmin(s.requireCapability(operators.CapabilityFleetView, http.HandlerFunc(s.handleAPIDispatch))))
 	mux.Handle("GET /api/tokens", s.requireAdmin(s.requireCapability(operators.CapabilityTokenManage, http.HandlerFunc(s.handleAPITokens))))
 	mux.Handle("GET /api/operators", s.requireAdmin(s.requireCapability(operators.CapabilityOperatorManage, http.HandlerFunc(s.handleAPIOperators))))
 

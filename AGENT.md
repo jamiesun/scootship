@@ -31,7 +31,7 @@ scootship is the **management center** for a fleet of [Scoot](https://github.com
 agents. It implements the **center (server) side** of the frozen `scoot-edge` v1 contract
 (see Scoot's `docs/EDGE.md`): it ingests append-only telemetry over HTTP and serves an embedded
 admin dashboard from a single Go binary. Phase 2 center-side dispatch core is present, with
-operator-facing dispatch rollout still gated.
+operator-facing dispatch creation still gated behind a read-only audit view.
 
 ## Relationship to Scoot (read this first)
 
@@ -140,9 +140,10 @@ the roadmap's non-goals as enforceable engineering rules.
   persist direct node-targeted dispatch jobs, de-duplicate them by `idem_key`, clamp the requested
   policy down to the node's reported ceiling, reject capability/label misses, lease only jobs bound
   to the authenticated node, and update lifecycle from validated `job_event` telemetry. The
-  dashboard still exposes no operator dispatch form until the remaining edge-side rollout gate is
-  satisfied. Do not add broad fan-out, hidden feature flags, admin-only bypasses, raw command fields,
-  or any path that raises a node's ceiling.
+  dashboard may expose this provenance through read-only audit views, but still exposes no operator
+  dispatch form until the remaining edge-side rollout gate is satisfied. Do not add broad fan-out,
+  hidden feature flags, admin-only bypasses, raw command fields, or any path that raises a node's
+  ceiling.
 
 ## Extension workflow
 
