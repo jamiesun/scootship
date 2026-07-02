@@ -27,6 +27,7 @@ type Config struct {
 	StaleSeconds         int    // a node is "stale" after this many seconds of silence
 	MaxTelemetryByte     int64  // cap on a single /telemetry request body
 	AuditRetentionEvents int    // recent audit events retained per node for API/dashboard reads
+	DispatchQueueLimit   int    // max non-terminal dispatch jobs per node before new creates are rejected
 
 	// Login brute-force protection (per source IP).
 	LoginMaxFails int
@@ -55,6 +56,7 @@ func FromEnv(getenv func(string) string) Config {
 		StaleSeconds:         intDef(getenv("SCOOTSHIP_STALE_SECONDS"), 90),
 		MaxTelemetryByte:     int64(intDef(getenv("SCOOTSHIP_MAX_TELEMETRY_BYTES"), 8*1024*1024)),
 		AuditRetentionEvents: positiveIntDef(getenv("SCOOTSHIP_AUDIT_RETENTION_EVENTS"), 1000),
+		DispatchQueueLimit:   positiveIntDef(getenv("SCOOTSHIP_DISPATCH_QUEUE_LIMIT"), 200),
 		LoginMaxFails:        intDef(getenv("SCOOTSHIP_LOGIN_MAX_FAILS"), 5),
 		LoginWindow:          time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_WINDOW_SECONDS"), 900)) * time.Second,
 		LoginLockout:         time.Duration(intDef(getenv("SCOOTSHIP_LOGIN_LOCKOUT_SECONDS"), 900)) * time.Second,

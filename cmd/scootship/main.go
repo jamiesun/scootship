@@ -79,6 +79,7 @@ serve environment:
   SCOOTSHIP_STALE_SECONDS        node goes stale after N seconds (default 90)
   SCOOTSHIP_MAX_TELEMETRY_BYTES  cap a single /telemetry request body (default 8388608)
   SCOOTSHIP_AUDIT_RETENTION_EVENTS recent audit events retained per node for API/dashboard (default 1000)
+  SCOOTSHIP_DISPATCH_QUEUE_LIMIT max non-terminal dispatch jobs per node before new dispatch creates are rejected (default 200)
   SCOOTSHIP_LOGIN_MAX_FAILS      failed logins per source IP before lockout (default 5)
   SCOOTSHIP_LOGIN_WINDOW_SECONDS sliding window for counting failures (default 900)
   SCOOTSHIP_LOGIN_LOCKOUT_SECONDS lockout duration once tripped (default 900)
@@ -107,7 +108,8 @@ func runServe(logger *slog.Logger) error {
 	}
 
 	st, err := store.OpenWithOptions(cfg.DataDir, store.Options{
-		AuditRetentionEvents: cfg.AuditRetentionEvents,
+		AuditRetentionEvents:      cfg.AuditRetentionEvents,
+		DispatchQueueLimitPerNode: cfg.DispatchQueueLimit,
 	})
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
@@ -141,6 +143,7 @@ func runServe(logger *slog.Logger) error {
 		"login_lockout_s", int(cfg.LoginLockout.Seconds()),
 		"trusted_proxies", len(cfg.TrustedProxies),
 		"audit_retention_events", cfg.AuditRetentionEvents,
+		"dispatch_queue_limit", cfg.DispatchQueueLimit,
 	)
 	if !cfg.TLSEnabled() {
 		if cfg.Dev {

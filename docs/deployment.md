@@ -3,9 +3,11 @@
 **English** | [简体中文](deployment.zh-CN.md)
 
 This document is the operator runbook for a real Scootship center. It covers production transport,
-storage, backup, and recovery. Center-side E2 dispatch records may exist, but this runbook does not
-enable operator-facing dispatch rollout and does not grant the center any authority to raise a
-node's local policy ceiling.
+storage, backup, and recovery. The center persists E2 dispatch records and lets `dispatch:manage`
+operators create node-targeted dispatch jobs; this runbook does not grant the center any authority
+to raise a node's local policy ceiling, and it is not a threat-model review for the separate,
+still-unbuilt dispatch **control** surface (cancel/retry/edit of an existing job) — see
+[`docs/dispatch-threat-model.md`](dispatch-threat-model.md) for that.
 
 ## Production Boundary
 
@@ -77,8 +79,8 @@ sudo chmod 0640 /etc/scootship/scootship.env
 real password in shell history.
 
 Bootstrap and legacy operators receive all current built-in capabilities
-(`fleet:view`, `tokens:manage`, `operators:manage`) so an upgrade cannot lock out the governance
-surface. New operators should be granted only the capabilities they need.
+(`fleet:view`, `tokens:manage`, `operators:manage`, `dispatch:manage`) so an upgrade cannot lock out
+the governance surface. New operators should be granted only the capabilities they need.
 
 Dashboard token management generates node bearer tokens on the center side. The generated secret is
 shown once after create or rotate; after that the dashboard and API expose only the node id, source,
@@ -254,5 +256,8 @@ entries that might have been exposed with the backup.
 - Do not store bearer tokens, TLS keys, or real bootstrap passwords in the repository.
 - Do not copy backups into low-trust ticket systems or chat logs.
 - Do not expose the plain listener when relying on a TLS proxy.
-- Do not treat this document as approval for operator-facing dispatch rollout; `/jobs/lease` only
-  returns already-persisted, node-bound jobs, and the dashboard still exposes no dispatch form.
+- Do not treat this document as a threat-model review for dispatch **control** (cancel/retry/edit
+  of an existing job); see `docs/dispatch-threat-model.md`. Dispatch **creation** is
+  capability-gated (`dispatch:manage`), CSRF-protected, and bounded by
+  `SCOOTSHIP_DISPATCH_QUEUE_LIMIT` per node, but `/jobs/lease` still only returns already-persisted,
+  node-bound jobs, and there is still no cancel/retry/edit UI for an existing job.

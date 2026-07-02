@@ -125,6 +125,7 @@ func allCapabilities() []string {
 		string(operators.CapabilityFleetView),
 		string(operators.CapabilityTokenManage),
 		string(operators.CapabilityOperatorManage),
+		string(operators.CapabilityDispatchManage),
 	}
 }
 
@@ -1117,7 +1118,7 @@ func TestDispatchDashboardReadOnlyAuditView(t *testing.T) {
 	}
 }
 
-func TestAPIDispatchReadOnlyAndPostAbsent(t *testing.T) {
+func TestAPIDispatchIsReadOnly(t *testing.T) {
 	ts, st := newTestServer(t)
 	now := time.Now().UnixMilli()
 	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
@@ -1158,7 +1159,10 @@ func TestAPIDispatchReadOnlyAndPostAbsent(t *testing.T) {
 		t.Fatalf("bad dispatch api payload: %+v body=%s", got, body)
 	}
 
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/dispatch", strings.NewReader("goal=run"))
+	// /api/dispatch is a JSON read API: it has no POST handler at all,
+	// regardless of the operator's dispatch:manage capability. Dispatch
+	// creation only ever happens through the dashboard form at POST /dispatch.
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/dispatch", strings.NewReader("goal=run"))
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1166,7 +1170,169 @@ func TestAPIDispatchReadOnlyAndPostAbsent(t *testing.T) {
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("POST /dispatch status=%d, want 405", resp.StatusCode)
+		t.Fatalf("POST /api/dispatch status=%d, want 405", resp.StatusCode)
+	}
+}
+
+func TestDispatchCreateRequiresCapability(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	admin := loginClient(t, ts.URL)
+
+	resp, err := admin.PostForm(ts.URL+"/operators", url.Values{
+		"username":         {"viewer2"},
+		"display_name":     {"Viewer2"},
+		"password":         {"viewer2-pass"},
+		"confirm_password": {"viewer2-pass"},
+		"capabilities":     {string(operators.CapabilityFleetView)},
+		"csrf_token":       {csrfToken(t, admin, ts.URL, "/operators/new")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create viewer2 status=%d", resp.StatusCode)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	viewer := &http.Client{Jar: jar}
+	resp, err = viewer.PostForm(ts.URL+"/login", url.Values{
+		"user":     {"viewer2"},
+		"password": {"viewer2-pass"},
+		"next":     {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/" {
+		t.Fatalf("viewer2 login failed: status=%d path=%s", resp.StatusCode, resp.Request.URL.Path)
+	}
+
+	resp, err = viewer.Get(ts.URL + "/dispatch/new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer2 GET /dispatch/new got %d want 403", resp.StatusCode)
+	}
+
+	resp, err = viewer.PostForm(ts.URL+"/dispatch", url.Values{
+		"node_id": {"n-1"},
+		"goal":    {"read something"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer2 POST /dispatch got %d want 403", resp.StatusCode)
+	}
+	if jobs := st.Jobs(); len(jobs) != 0 {
+		t.Fatalf("job created despite missing capability: %+v", jobs)
+	}
+}
+
+func TestDispatchCreateRequiresCSRF(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	admin := loginClient(t, ts.URL)
+
+	resp, err := admin.PostForm(ts.URL+"/dispatch", url.Values{
+		"node_id":          {"n-1"},
+		"goal":             {"read something"},
+		"requested_policy": {"readonly"},
+		"deadline_minutes": {"60"},
+		"max_retries":      {"0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /dispatch without csrf got %d want 403", resp.StatusCode)
+	}
+	if jobs := st.Jobs(); len(jobs) != 0 {
+		t.Fatalf("job created despite missing csrf: %+v", jobs)
+	}
+}
+
+func TestDispatchCreateSucceedsAndClampsPolicy(t *testing.T) {
+	ts, st := newTestServer(t)
+	now := time.Now().UnixMilli()
+	if err := st.UpsertStatus("n-1", now, now, protocol.StatusBody{PolicyCeiling: protocol.PolicyReadonly}); err != nil {
+		t.Fatal(err)
+	}
+	admin := loginClient(t, ts.URL)
+
+	resp, err := admin.PostForm(ts.URL+"/dispatch", url.Values{
+		"node_id":          {"n-1"},
+		"goal":             {"summarize audit anomalies"},
+		"requested_policy": {"unrestricted"}, // must be clamped down to the node's readonly ceiling
+		"deadline_minutes": {"60"},
+		"max_retries":      {"1"},
+		"csrf_token":       {csrfToken(t, admin, ts.URL, "/dispatch/new")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create dispatch status=%d body=%s", resp.StatusCode, body)
+	}
+
+	jobs := st.Jobs()
+	if len(jobs) != 1 {
+		t.Fatalf("want 1 job, got %d: %+v", len(jobs), jobs)
+	}
+	job := jobs[0]
+	if job.NodeID != "n-1" || job.Requestor != "admin" {
+		t.Fatalf("bad job provenance: %+v", job)
+	}
+	if job.RequestedPolicy != protocol.PolicyReadonly {
+		t.Fatalf("requested_policy not clamped to node ceiling: %+v", job)
+	}
+	if job.MaxRetries != 1 {
+		t.Fatalf("max_retries not honored: %+v", job)
+	}
+}
+
+func TestDispatchCreateRejectsUnknownNode(t *testing.T) {
+	ts, st := newTestServer(t)
+	admin := loginClient(t, ts.URL)
+
+	resp, err := admin.PostForm(ts.URL+"/dispatch", url.Values{
+		"node_id":          {"n-does-not-exist"},
+		"goal":             {"read something"},
+		"requested_policy": {"readonly"},
+		"deadline_minutes": {"60"},
+		"max_retries":      {"0"},
+		"csrf_token":       {csrfToken(t, admin, ts.URL, "/dispatch/new")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// Validation failures re-render the create form (200) with a friendly error,
+	// mirroring the token/operator create form pattern.
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create dispatch with unknown node status=%d body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "form-error") {
+		t.Fatalf("expected a form error for unknown node: %s", body)
+	}
+	if jobs := st.Jobs(); len(jobs) != 0 {
+		t.Fatalf("job created for unknown node: %+v", jobs)
 	}
 }
 

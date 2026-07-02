@@ -301,6 +301,8 @@ func capabilityLabel(lang string, cap operators.Capability) string {
 		return tr(lang, "capability.tokens_manage")
 	case operators.CapabilityOperatorManage:
 		return tr(lang, "capability.operators_manage")
+	case operators.CapabilityDispatchManage:
+		return tr(lang, "capability.dispatch_manage")
 	default:
 		return string(cap)
 	}

@@ -23,6 +23,7 @@ type basePage struct {
 	CanViewFleet       bool
 	CanManageTokens    bool
 	CanManageOperators bool
+	CanManageDispatch  bool
 }
 
 type nodeRow struct {
@@ -72,6 +73,7 @@ type dispatchPage struct {
 	Done       int
 	Rejected   int
 	Jobs       []dispatchJobRow
+	Create     formMessage
 }
 
 type dispatchJobRow struct {
@@ -188,7 +190,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 	user, _ := s.currentUser(r)
-	page := s.dispatchPage(r, user)
+	page := s.dispatchPage(r, user, formMessage{})
 	s.render(w, "dispatch", page)
 }
 
@@ -220,7 +222,7 @@ func (s *Server) handleAPINode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIDispatch(w http.ResponseWriter, r *http.Request) {
-	page := s.dispatchPage(r, "")
+	page := s.dispatchPage(r, "", formMessage{})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"now_ms":   s.now().UnixMilli(),
 		"total":    page.Total,
@@ -296,7 +298,7 @@ func (s *Server) tokenRows(lang string) []tokenRow {
 	return rows
 }
 
-func (s *Server) dispatchPage(r *http.Request, user string) dispatchPage {
+func (s *Server) dispatchPage(r *http.Request, user string, msg formMessage) dispatchPage {
 	lang := requestLang(r)
 	nodes := map[string]store.NodeView{}
 	for _, n := range s.store.Nodes() {
@@ -304,6 +306,7 @@ func (s *Server) dispatchPage(r *http.Request, user string) dispatchPage {
 	}
 	page := dispatchPage{
 		basePage: s.base(r, user, "dispatch", "page.dispatch"),
+		Create:   msg,
 	}
 	for _, job := range s.store.Jobs() {
 		row := dispatchJobRow{
@@ -368,6 +371,7 @@ func (s *Server) baseTitle(r *http.Request, user, active, title string) basePage
 		CanViewFleet:       s.operatorHasCapability(user, operators.CapabilityFleetView),
 		CanManageTokens:    s.operatorHasCapability(user, operators.CapabilityTokenManage),
 		CanManageOperators: s.operatorHasCapability(user, operators.CapabilityOperatorManage),
+		CanManageDispatch:  s.operatorHasCapability(user, operators.CapabilityDispatchManage),
 	}
 }
 

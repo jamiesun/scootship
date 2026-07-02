@@ -60,6 +60,7 @@ const (
 	CapabilityFleetView      Capability = "fleet:view"
 	CapabilityTokenManage    Capability = "tokens:manage"
 	CapabilityOperatorManage Capability = "operators:manage"
+	CapabilityDispatchManage Capability = "dispatch:manage"
 )
 
 // AllCapabilities returns the fixed system capability list in UI order.
@@ -68,6 +69,7 @@ func AllCapabilities() []Capability {
 		CapabilityFleetView,
 		CapabilityTokenManage,
 		CapabilityOperatorManage,
+		CapabilityDispatchManage,
 	}
 }
 

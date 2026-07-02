@@ -15,9 +15,9 @@ protocol and serves an embedded admin dashboard so you can observe the whole fle
 > **Status: Phase 2 center-side dispatch core (pre-1.0).**
 > The center ingests `status` heartbeats and `audit_batch` log shipping and renders the fleet.
 > Task **dispatch/orchestration (EDGE.md E2)** now has a persisted center-side queue, node-bound
-> lease output, lifecycle ingestion, and idempotency/provenance tests. The dashboard still exposes
-> only a read-only Dispatch audit view, with no operator dispatch form until the remaining
-> edge-side rollout gate is satisfied. See
+> lease output, lifecycle ingestion, and idempotency/provenance tests. Dashboard operators holding
+> the `dispatch:manage` capability can create new node-targeted dispatch jobs; the `/dispatch` list
+> itself remains a read-only audit view, and job control (cancel/retry) is not yet built. See
 > [`docs/roadmap.md`](docs/roadmap.md) for the project shape, boundaries, and direction.
 
 ## Why a separate companion
@@ -121,6 +121,7 @@ make ci          # fmt-check + vet + test + build
 | `SCOOTSHIP_STALE_SECONDS` | `90` | A node is shown "stale" after this much silence. |
 | `SCOOTSHIP_MAX_TELEMETRY_BYTES` | `8388608` | Maximum size of one `/telemetry` request body. |
 | `SCOOTSHIP_AUDIT_RETENTION_EVENTS` | `1000` | Recent audit events retained per node for dashboard/API reads. Overflow creates an explicit `audit_gap`; accepted events remain in the append-only JSONL log. |
+| `SCOOTSHIP_DISPATCH_QUEUE_LIMIT` | `200` | Maximum non-terminal (queued/leased/running) dispatch jobs one node may have outstanding at once. New operator-created dispatch jobs beyond this cap are rejected. |
 | `SCOOTSHIP_LOGIN_MAX_FAILS` | `5` | Failed dashboard logins from one source IP before it is locked out. |
 | `SCOOTSHIP_LOGIN_WINDOW_SECONDS` | `900` | Sliding window over which failures are counted. |
 | `SCOOTSHIP_LOGIN_LOCKOUT_SECONDS` | `900` | How long a tripped IP stays locked out. |
@@ -169,8 +170,10 @@ shapes live in [`internal/protocol`](internal/protocol/protocol.go) and mirror E
   node. Dispatch records are append-only JSONL snapshots with `idem_key` de-duplication, node
   binding, capability/label miss rejection (`no_matching_capability`), only-lower policy clamping
   against the node's reported ceiling, and lifecycle updates from validated `job_event` telemetry.
-  The dashboard exposes this queue/provenance through a read-only Dispatch audit view and JSON API,
-  but still has no operator dispatch form while the remaining edge rollout gate is open.
+  Dashboard operators holding the `dispatch:manage` capability can create a new node-targeted job
+  from `/dispatch/new` (session + CSRF protected, bounded by a configurable per-node pending-job
+  queue cap); the `/dispatch` list and JSON API remain a read-only audit view, and there is still no
+  cancel/retry/edit control surface for an existing job.
 
 scootship talks only this contract; it does not depend on any Scoot internal.
 
@@ -187,7 +190,7 @@ scootship talks only this contract; it does not depend on any Scoot internal.
 | `internal/config` | Environment-driven configuration. |
 | `internal/center` | HTTP server, bearer + login-session auth, capability gates, CSRF checks, telemetry ingest, node-bound lease dispatch, read-only health/dispatch audit signals, dashboard + JSON API. |
 | `internal/web` | Embedded dashboard templates and static assets (`embed.FS`). |
-| `internal/mockedge` | Simulated scoot-edge node (stands in for the not-yet-built edge). |
+| `internal/mockedge` | Simulated scoot-edge node for dev/test (a faithful client of the public contract, never a second implementation of Scoot). |
 | `internal/version` | Build version string; release builds override it from the tag. |
 | `.github/workflows` | CI, mdBook docs, and tag-driven release automation. |
 | `.agents/skills` | Project-local release and audit skills. |
